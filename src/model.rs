@@ -24,21 +24,23 @@ pub fn is_protected(app: &App, excluded: &[String], terminal_pid: i32) -> bool {
             && (app.bundle_id.is_empty() || app.bundle_id.starts_with("com.apple.")))
 }
 
-pub fn visible<'a>(apps: &'a [App], show_bg: bool, filter: &str, sort: Sort) -> Vec<&'a App> {
-    let needle = filter.to_lowercase();
-    let mut out: Vec<&App> = apps
-        .iter()
-        .filter(|a| show_bg || a.kind == Kind::Regular)
-        .filter(|a| a.name.to_lowercase().contains(&needle))
-        .collect();
+pub fn sort_apps(apps: &mut [App], sort: Sort) {
     match sort {
         // None < Some, so comparing b to a puts unknown memory last.
-        Sort::Memory => out.sort_by(|a, b| {
+        Sort::Memory => apps.sort_by(|a, b| {
             b.memory_bytes.cmp(&a.memory_bytes).then_with(|| a.name.cmp(&b.name))
         }),
-        Sort::Name => out.sort_by_key(|a| a.name.to_lowercase()),
+        Sort::Name => apps.sort_by_key(|a| a.name.to_lowercase()),
     }
-    out
+}
+
+/// Keeps the order of `apps`; filtering only hides rows.
+pub fn visible<'a>(apps: &'a [App], show_bg: bool, filter: &str) -> Vec<&'a App> {
+    let needle = filter.to_lowercase();
+    apps.iter()
+        .filter(|a| show_bg || a.kind == Kind::Regular)
+        .filter(|a| a.name.to_lowercase().contains(&needle))
+        .collect()
 }
 
 /// The only source of pids passed to apps::quit / apps::force_quit.
@@ -102,7 +104,7 @@ impl Model {
     }
 
     pub fn visible(&self) -> Vec<&App> {
-        visible(&self.apps, self.show_bg, &self.filter, self.sort)
+        visible(&self.apps, self.show_bg, &self.filter)
     }
 
     pub fn protected(&self, app: &App) -> bool {
@@ -130,7 +132,21 @@ impl Model {
 
     /// Split from refresh() so tests can feed a fake app list.
     pub fn apply_refresh(&mut self, apps: Vec<App>) {
-        self.apps = apps;
+        // Rows keep their place between refreshes so the cursor doesn't jump; only the first load and `s` sort.
+        if self.apps.is_empty() {
+            self.apps = apps;
+            sort_apps(&mut self.apps, self.sort);
+        } else {
+            let mut new = apps;
+            let mut merged = Vec::with_capacity(new.len());
+            for old in &self.apps {
+                if let Some(i) = new.iter().position(|a| a.pid == old.pid) {
+                    merged.push(new.remove(i));
+                }
+            }
+            merged.extend(new); // what's left just launched
+            self.apps = merged;
+        }
         self.refreshed = Instant::now();
         let alive: HashSet<i32> = self.apps.iter().map(|a| a.pid).collect();
         self.selected.retain(|pid| alive.contains(pid));
@@ -265,7 +281,8 @@ impl Model {
                 self.sort = match self.sort {
                     Sort::Memory => Sort::Name,
                     Sort::Name => Sort::Memory,
-                }
+                };
+                sort_apps(&mut self.apps, self.sort);
             }
             KeyCode::Char('?') => self.help = true,
             _ => {}
@@ -325,23 +342,65 @@ mod tests {
     fn filter_is_case_insensitive_substring() {
         let apps = sample();
         let names: Vec<&str> =
-            visible(&apps, false, "AF", Sort::Name).iter().map(|a| a.name.as_str()).collect();
+            visible(&apps, false, "AF").iter().map(|a| a.name.as_str()).collect();
         assert_eq!(names, vec!["Safari"]);
     }
 
     #[test]
     fn memory_sort_puts_unknown_last() {
-        let apps = sample();
+        let mut apps = sample();
+        sort_apps(&mut apps, Sort::Memory);
         let names: Vec<&str> =
-            visible(&apps, false, "", Sort::Memory).iter().map(|a| a.name.as_str()).collect();
+            visible(&apps, false, "").iter().map(|a| a.name.as_str()).collect();
         assert_eq!(names, vec!["Slack", "Safari", "Ghostty", "Finder", "Mystery"]);
+    }
+
+    fn pids(m: &Model) -> Vec<i32> {
+        m.apps.iter().map(|a| a.pid).collect()
+    }
+
+    #[test]
+    fn first_refresh_sorts_by_memory() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        assert_eq!(pids(&m), vec![1, 2, 4, 6, 3, 5, 7]);
+    }
+
+    #[test]
+    fn refresh_keeps_row_order_when_memory_changes() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        let mut next = sample();
+        next[2].memory_bytes = Some(9999); // Finder now biggest
+        m.apply_refresh(next);
+        assert_eq!(pids(&m), vec![1, 2, 4, 6, 3, 5, 7]);
+        assert_eq!(m.apps[4].memory_bytes, Some(9999)); // data still updated in place
+    }
+
+    #[test]
+    fn refresh_appends_new_pid_and_removes_gone_pid() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        let mut next: Vec<App> = sample().into_iter().filter(|a| a.pid != 2).collect();
+        next.insert(0, app(8, "Zed", "dev.zed", Kind::Regular, Some(5000)));
+        m.apply_refresh(next);
+        assert_eq!(pids(&m), vec![1, 4, 6, 3, 5, 7, 8]);
+    }
+
+    #[test]
+    fn s_key_resorts() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        m.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        assert_eq!(m.sort, Sort::Name);
+        assert_eq!(m.apps[0].name, "Finder");
     }
 
     #[test]
     fn background_apps_hidden_unless_toggled() {
         let apps = sample();
-        assert!(!visible(&apps, false, "", Sort::Name).iter().any(|a| a.name == "Spotify"));
-        assert!(visible(&apps, true, "", Sort::Name).iter().any(|a| a.name == "Spotify"));
+        assert!(!visible(&apps, false, "").iter().any(|a| a.name == "Spotify"));
+        assert!(visible(&apps, true, "").iter().any(|a| a.name == "Spotify"));
     }
 
     #[test]
