@@ -43,13 +43,13 @@
   - `pub fn protection(p: &Port, my_uid: u32, terminal_pid: i32, self_pid: i32) -> Option<&'static str>`
   - `pub fn matches(p: &Port, needle: &str, home: &str) -> bool`
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 ```bash
 cargo add libproc@0.15
 ```
 
-- [ ] **Step 2: Write the tests against stubs (RED)**
+- [x] **Step 2: Write the tests against stubs (RED)**
 
 Create `src/ports.rs` containing only the `Port` struct, these stubs, and the `#[cfg(test)] mod tests` block from the full file in Step 3 (copy it exactly; leave out `mod live` for now):
 
@@ -86,7 +86,7 @@ Add `mod ports;` to `src/main.rs` below `mod model;`.
 Run: `cargo test -q ports::tests`
 Expected: 4 tests FAIL with `not yet implemented`.
 
-- [ ] **Step 3: Write the full file (GREEN)**
+- [x] **Step 3: Write the full file (GREEN)**
 
 Replace `src/ports.rs` with:
 
@@ -358,7 +358,7 @@ mod live {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cargo test -q`
 Expected: `22 passed; 0 failed; 1 ignored` (18 existing tests, 4 new ports tests, and the ignored live test). Dead-code warnings for `list`, `kill`, `my_uid`, `process`, and `matches` are expected until Task 2 uses them.
@@ -368,7 +368,7 @@ Then run the live check, which starts and stops a real `python3 -m http.server 8
 Run: `cargo test -q live -- --ignored`
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock src/ports.rs src/main.rs
@@ -395,7 +395,7 @@ git commit -m "feat: scan listening TCP ports and name their processes"
 
 This task is a refactor plus a feature. `model.rs` and `ui.rs` change together because `ui.rs` reads the model fields that move into `Picker`, so they are replaced in one step. The existing app tests are kept and adapted to the new fields (for example `m.selected` becomes `m.app_pick.selected`). They are the regression net for the refactor. New tests cover `pick_targets`, `Picker::prune`, and the Ports tab.
 
-- [ ] **Step 1: Replace `src/model.rs`**
+- [x] **Step 1: Replace `src/model.rs`**
 
 ```rust
 use std::collections::{HashMap, HashSet};
@@ -1039,7 +1039,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Replace `src/ui.rs`**
+- [x] **Step 2: Replace `src/ui.rs`**
 
 ```rust
 use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};
@@ -1373,7 +1373,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Run tests and check warnings**
+- [x] **Step 3: Run tests and check warnings**
 
 Run: `cargo test -q && cargo build 2>&1 | grep -c warning`
 Expected: `29 passed; 0 failed; 1 ignored`, then `0`.
@@ -1383,7 +1383,7 @@ Check that no other code calls the OS kill functions directly:
 Run: `grep -n "ports::kill\|apps::quit\|apps::force_quit" src/*.rs`
 Expected: matches only inside `fn send` in `src/model.rs`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/model.rs src/ui.rs
