@@ -22,7 +22,7 @@ Out:
 New file `src/ports.rs`. Like `apps.rs`, it may call the OS and contain `unsafe`.
 
 - `Port { port: u16, pid: i32, uid: u32, exe: String, args: Vec<String>, cwd: Option<String> }`
-- `list() -> Vec<Port>`: walks every pid with the `libproc` crate, keeps TCP sockets in the LISTEN state, and reads the executable path (`proc_pidpath`), arguments (`sysctl KERN_PROCARGS2`), and working directory (`proc_pidinfo PROC_PIDVNODEPATHINFO`). Sorted by port, then pid, with duplicates removed. A full scan takes about 7ms, so it runs on every 2s refresh.
+- `list() -> Vec<Port>`: walks every pid with the `libproc` crate, keeps TCP sockets in the LISTEN state, and reads the executable path (`proc_pidpath`), arguments (`sysctl KERN_PROCARGS2`), and working directory (`proc_pidinfo PROC_PIDVNODEPATHINFO`). Sorted by port, then pid, with duplicates removed. A full scan takes about 10ms. It runs at startup and when you press `R`.
 - `kill(pid, force) -> bool`: `SIGTERM`, or `SIGKILL` when `force` is true. Returns whether the signal was delivered.
 
 New dependency: `libproc` 0.15. `libc` has no socket-info structs; `lsof` takes about 320ms per call, which would stall key handling.
@@ -59,7 +59,7 @@ Protected rows are dimmed, show a lock, and can't be selected.
 - Selection is by pid. Selecting one row of a process that holds several ports marks all its rows, because a stop ends the whole process.
 - Each tab has its own cursor and selection. Switching tabs clears the filter.
 - On the Ports tab, the filter matches the port number (with or without a leading `:`), the name, or the project. `b` and `s` do nothing there.
-- Port rows are sorted by port number on every refresh.
+- Port rows are sorted by port number each time you press `R`. Nothing refreshes automatically, so rows only move when you ask.
 
 ## Screen
 
@@ -79,13 +79,13 @@ Protected rows are dimmed, show a lock, and can't be selected.
 - The active tab is bold and cyan in the title. The other is dim.
 - Columns: port, name, project (or the protection badge for protected rows), process name (dim), pid (dim).
 - The header shows the number of selected visible rows and the total number of rows on the Ports tab.
-- The footer and help list `tab`. On the Ports tab the footer says `⏎ stop  ⇧Q kill` and leaves out `b` and `s`.
+- The footer and help list `tab` and `R`. On the Ports tab the footer says `⏎ stop  ⇧Q kill` and leaves out `b` and `s`.
 
 ## Behaviour
 
-1. `⏎` sends `SIGTERM` to each target. The toast says `✓ Stopping :3000 next-server (v16.4.1)`. Rows show `stopping…`.
+1. `⏎` sends `SIGTERM` to each target. The toast says `✓ Stopping :3000 next-server (v16.4.1)`. Rows show `stopping…`, then `gone` (dimmed, can't be selected) once the process exits, until the next `R`.
 2. If a process is still running 10s later, the toast says `<label> still running, try ⇧Q`.
-3. `⇧Q` opens the confirm modal: `Kill 2 processes? They stop immediately.` (`1 process` for one), one label per line (at most 8, then `+N more`), then `y kill   any other key cancels`. `y` sends `SIGKILL`.
+3. `⇧Q` opens the confirm modal: `Kill 2 processes? They stop immediately.` (`1 process` for one), one label per line (at most 8, then `+N more`), then `y kill   any other key cancels`. `y` re-checks the targets through `pick_targets` and sends `SIGKILL` to what's left.
 4. If a signal can't be delivered, the toast says `Couldn't stop <label>`.
 
 ## Testing
@@ -102,6 +102,6 @@ Unit tests:
 
 Manual:
 
-1. Run `python3 -m http.server 8765` in another tab. In `killer`, press `tab`, find `:8765`, and press `⏎`. The server exits and the row disappears.
+1. Run `python3 -m http.server 8765` in another tab. In `killer`, press `tab`, find `:8765`, and press `⏎`. The server exits, the row shows `gone`, and it disappears after `R`.
 2. Run `python3 -c "import signal,socket; signal.signal(signal.SIGTERM, signal.SIG_IGN); s=socket.socket(); s.bind(('127.0.0.1',8766)); s.listen(); input()"`. Press `⏎` on `:8766`. After 10–12s the toast says `still running, try ⇧Q`. Press `⇧Q`, then `y`. The process exits.
 3. `:5000` (ControlCenter) and any OrbStack or Docker rows are dimmed with a lock and can't be selected.
