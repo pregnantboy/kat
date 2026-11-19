@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 use crate::apps::{App, Kind};
-use crate::model::{Model, Sort};
+use crate::model::{is_excluded, Model, Sort};
 
 const NAME_WIDTH: usize = 22;
 const BAR_WIDTH: usize = 12;
@@ -31,7 +31,7 @@ fn badge(m: &Model, a: &App) -> &'static str {
         "quitting…"
     } else if a.pid == m.terminal_pid {
         "this terminal"
-    } else if m.excluded.contains(&a.bundle_id) {
+    } else if is_excluded(a, &m.excluded) {
         "excluded"
     } else if m.protected(a) {
         "system"

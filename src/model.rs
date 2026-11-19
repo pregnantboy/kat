@@ -16,9 +16,14 @@ pub enum Sort {
     Name,
 }
 
+/// macOS treats bundle IDs case-insensitively.
+pub fn is_excluded(app: &App, excluded: &[String]) -> bool {
+    excluded.iter().any(|b| b.eq_ignore_ascii_case(&app.bundle_id))
+}
+
 pub fn is_protected(app: &App, excluded: &[String], terminal_pid: i32) -> bool {
     app.pid == terminal_pid
-        || excluded.iter().any(|b| *b == app.bundle_id)
+        || is_excluded(app, excluded)
         // Background Apple processes include loginwindow and Dock: quitting them logs you out or breaks the desktop.
         || (app.kind != Kind::Regular
             && (app.bundle_id.is_empty() || app.bundle_id.starts_with("com.apple.")))
@@ -428,6 +433,12 @@ mod tests {
         assert_eq!(m.targets().iter().map(|a| a.pid).collect::<Vec<_>>(), vec![2]);
         m.filter.clear();
         assert_eq!(m.targets().len(), 4);
+    }
+
+    #[test]
+    fn excluded_bundle_ids_match_case_insensitively() {
+        let finder = app(9, "Finder", "com.apple.Finder", Kind::Regular, None);
+        assert!(is_protected(&finder, &excluded(), TERMINAL));
     }
 
     #[test]

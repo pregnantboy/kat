@@ -4,8 +4,8 @@ pub const DEFAULT_EXCLUDED: &[&str] = &["com.apple.finder"];
 
 pub fn parse(text: &str) -> Vec<String> {
     text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|line| !line.is_empty())
         .map(String::from)
         .collect()
 }
@@ -36,5 +36,10 @@ mod tests {
     fn parse_skips_blanks_and_comments() {
         let text = "# my list\ncom.tinyspeck.slackmacgap\n\n  com.apple.Safari  \n";
         assert_eq!(parse(text), vec!["com.tinyspeck.slackmacgap", "com.apple.Safari"]);
+    }
+
+    #[test]
+    fn parse_strips_trailing_comments() {
+        assert_eq!(parse("com.foo.app  # work laptop\n"), vec!["com.foo.app"]);
     }
 }
