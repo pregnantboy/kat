@@ -1,4 +1,5 @@
 mod apps;
+mod config;
 
 fn find(bundle_id: &str) -> Option<i32> {
     apps::list().into_iter().find(|a| a.bundle_id == bundle_id).map(|a| a.pid)
