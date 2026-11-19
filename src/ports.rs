@@ -56,6 +56,10 @@ pub fn list() -> Vec<Port> {
 }
 
 pub fn kill(pid: i32, force: bool) -> bool {
+    // 0 and -1 would signal a whole process group or every process we own.
+    if pid <= 0 {
+        return false;
+    }
     unsafe { libc::kill(pid, if force { libc::SIGKILL } else { libc::SIGTERM }) == 0 }
 }
 
@@ -134,9 +138,9 @@ pub fn name(p: &Port) -> String {
 }
 
 pub fn project(p: &Port, home: &str) -> Option<String> {
-    let cwd = p.cwd.as_deref().filter(|c| *c != "/")?;
+    let cwd = p.cwd.as_deref().filter(|c| !c.is_empty() && *c != "/")?;
     Some(match cwd.strip_prefix(home) {
-        Some(rest) if !home.is_empty() => format!("~{rest}"),
+        Some(rest) if !home.is_empty() && (rest.is_empty() || rest.starts_with('/')) => format!("~{rest}"),
         _ => cwd.to_string(),
     })
 }
@@ -207,6 +211,15 @@ mod tests {
         assert_eq!(project(&p, "/Users/ian").as_deref(), Some("~/code/shop"));
         assert_eq!(project(&port(1, 1, NODE, &[], Some("/")), "/Users/ian"), None);
         assert_eq!(project(&port(1, 1, NODE, &[], None), "/Users/ian"), None);
+        assert_eq!(project(&port(1, 1, NODE, &[], Some("/Users/iansmith/x")), "/Users/ian").as_deref(), Some("/Users/iansmith/x"));
+        assert_eq!(project(&port(1, 1, NODE, &[], Some("/Users/ian")), "/Users/ian").as_deref(), Some("~"));
+        assert_eq!(project(&port(1, 1, NODE, &[], Some("")), "/Users/ian"), None);
+    }
+
+    #[test]
+    fn kill_refuses_non_positive_pids() {
+        assert!(!kill(0, false));
+        assert!(!kill(-1, false));
     }
 
     #[test]
