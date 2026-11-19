@@ -158,6 +158,7 @@ pub struct Model {
     pub filter: String,
     pub filtering: bool,
     pub show_bg: bool,
+    pub show_locked: bool,
     pub sort: Sort,
     pub toast: Option<(String, Instant)>,
     pub confirm: Option<(Tab, Vec<Item>)>,
@@ -180,6 +181,7 @@ impl Model {
             filter: String::new(),
             filtering: false,
             show_bg: false,
+            show_locked: false,
             sort: Sort::Memory,
             toast: None,
             confirm: None,
@@ -197,7 +199,22 @@ impl Model {
     }
 
     pub fn visible_ports(&self) -> Vec<&Port> {
-        self.ports.iter().filter(|p| ports::matches(p, &self.filter, &self.home)).collect()
+        self.ports
+            .iter()
+            .filter(|p| ports::matches(p, &self.filter, &self.home))
+            .filter(|p| self.show_locked || self.port_protection(p).is_none())
+            .collect()
+    }
+
+    /// Locked ports the text filter lets through but `show_locked` hides.
+    pub fn locked_hidden(&self) -> usize {
+        if self.show_locked {
+            return 0;
+        }
+        self.ports
+            .iter()
+            .filter(|p| ports::matches(p, &self.filter, &self.home) && self.port_protection(p).is_some())
+            .count()
     }
 
     pub fn protected(&self, app: &App) -> bool {
@@ -431,7 +448,8 @@ impl Model {
                 };
                 sort_apps(&mut self.apps, self.sort);
             }
-            KeyCode::Char('R') => {
+            KeyCode::Char('h') if tab == Tab::Ports => self.show_locked = !self.show_locked,
+            KeyCode::Char('r') => {
                 self.refresh();
                 self.set_toast(format!("↻ {} apps · {} ports", self.apps.len(), self.ports.len()));
             }
@@ -717,5 +735,23 @@ mod tests {
         assert_eq!(m.tab, Tab::Apps);
         assert!(m.filter.is_empty());
         assert_eq!(m.items().len(), 5); // regular apps
+    }
+
+    #[test]
+    fn locked_ports_hidden_until_h() {
+        let mut m = port_model();
+        assert_eq!(m.items().iter().map(|i| i.pid).collect::<Vec<_>>(), vec![10, 13, 13]);
+        assert_eq!(m.locked_hidden(), 2);
+        m.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
+        assert!(m.show_locked);
+        assert_eq!(m.visible_ports().len(), 5);
+    }
+
+    #[test]
+    fn h_does_nothing_on_apps_tab() {
+        let mut m = port_model();
+        m.tab = Tab::Apps;
+        m.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
+        assert!(!m.show_locked);
     }
 }

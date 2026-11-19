@@ -150,8 +150,8 @@ fn tab_title(m: &Model) -> Line<'static> {
 
 pub fn draw(f: &mut Frame, m: &mut Model) {
     let keys = match m.tab {
-        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  b background  s sort  R refresh  ? help ",
-        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  R refresh  ? help ",
+        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  b background  s sort  r refresh  ? help ",
+        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  r refresh  h locked  ? help ",
     };
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
@@ -189,7 +189,15 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
         Tab::Ports => {
             let shown = m.visible_ports();
             let picked = shown.iter().filter(|p| m.port_pick.selected.contains(&p.pid)).count();
-            format!("{picked} selected · {} ports ", shown.len())
+            let hidden = m.locked_hidden();
+            let locked = if m.show_locked {
+                " · locked shown".to_string()
+            } else if hidden > 0 {
+                format!(" · {hidden} locked hidden")
+            } else {
+                String::new()
+            };
+            format!("{picked} selected · {} ports{locked} ", shown.len())
         }
     };
     f.render_widget(Paragraph::new(summary).alignment(Alignment::Right), header);
@@ -253,7 +261,8 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
             ("/", "filter, esc clears"),
             ("b", "show background apps"),
             ("s", "sort apps by memory / name"),
-            ("R", "refresh apps and ports"),
+            ("r", "refresh apps and ports"),
+            ("h", "show locked ports"),
             ("esc  ctrl-c", "exit"),
         ];
         let lines = keys
@@ -329,7 +338,10 @@ mod tests {
             Port { port: 5000, pid: 747, uid: 502, exe: cc.into(), args: vec![cc.into()], cwd: Some("/".into()) },
         ]);
         let text = render(&mut m, 100, 10);
-        for want in [":3000", "next-server (v16.4.1)", "~/code/shop", "node", "58388", ":5000", "ControlCenter", "system", "2 ports", "⏎ stop"] {
+        assert!(text.contains("1 locked hidden") && !text.contains("ControlCenter"));
+        m.show_locked = true;
+        let text = render(&mut m, 100, 10);
+        for want in [":3000", "next-server (v16.4.1)", "~/code/shop", "node", "58388", ":5000", "ControlCenter", "system", "2 ports", "locked shown", "⏎ stop"] {
             assert!(text.contains(want), "missing {want}");
         }
     }
