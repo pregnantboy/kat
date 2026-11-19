@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 libc = "0.2"
+libproc = "0.15"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSRunningApplication", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSRunLoop", "NSDate", "NSString", "NSArray", "NSEnumerator"] }
 ratatui = "0.30"

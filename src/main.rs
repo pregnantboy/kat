@@ -1,6 +1,7 @@
 mod apps;
 mod config;
 mod model;
+mod ports;
 mod ui;
 
 use std::time::Duration;
