@@ -18,7 +18,6 @@ Out of v1:
 
 - Auto Quit (quitting apps after an idle period). It needs a background agent to be useful.
 - Configurable key bindings. Keys are hardcoded.
-- App icons. Most terminals can't show images.
 - Linux and Windows support.
 
 ## Stack
@@ -30,14 +29,14 @@ Out of v1:
 
 ## Files
 
-Five files: `apps.rs` (AppKit), `config.rs` (exclusions), `model.rs` (state, keys, and the pure logic that tests cover), `ui.rs` (rendering), `main.rs` (the event loop).
+Files: `apps.rs` (AppKit), `ports.rs` (port scanning), `config.rs` (exclusions), `model.rs` (state, keys, and the pure logic that tests cover), `ui.rs` (rendering), `icons.rs` (inline images), `main.rs` (the event loop).
 
 ### `src/apps.rs`
 
 The only file that calls AppKit or `libc`.
 
 - `list() -> Vec<App>`: reads `NSWorkspace.sharedWorkspace.runningApplications`. Before reading, it runs the current run loop for about 10ms, because a command-line process has no Cocoa run loop and the list goes stale otherwise.
-- `App` fields: `name`, `bundle_id`, `pid`, `kind`, `memory_bytes`.
+- `App` fields: `name`, `bundle_id`, `pid`, `kind`, `memory_bytes`, `bundle_path`.
 - `kind` comes from `activationPolicy`: `Regular` (Dock app), `Accessory` (menu bar app), or `Prohibited` (helper).
 - `memory_bytes` is `ri_phys_footprint` from `proc_pid_rusage`, the same number Activity Monitor shows as "Memory". It is `None` when the call fails, for example for another user's process.
 - `quit(pid) -> bool` calls `terminate()`. `force_quit(pid) -> bool` calls `forceTerminate()`. Both return as soon as the request is sent, not when the app exits.
@@ -131,10 +130,11 @@ Manual checks for the AppKit layer:
 
 ## App icons
 
-In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is `iTerm.app` or `WezTerm`), rows show the app's icon between the marker and the name. Set `KILLER_ICONS=0` to turn them off. Other terminals get no icons and no reserved space.
+In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is `iTerm.app` or `WezTerm`, and not inside tmux), rows show the app's icon between the marker and the name. Set `KILLER_ICONS=0` to turn them off. Other terminals get no icons and no reserved space.
 
 - Apps rows use the app's bundle path; Ports rows use the outermost `.app` bundle in the executable path (`ports::app_path`). Rows without a bundle (`node`, `codex`) keep the blank space so columns line up.
 - `apps::icon_png(path)` asks `NSWorkspace.iconForFile` for the icon and rasterises it to PNG at 32pt (64px on Retina) with `CGImageForProposedRect`. No image crate.
-- Icons are cached by bundle path and loaded lazily, at most 6 per tick, so startup isn't delayed (rasterising all 124 running apps at once takes about 1s).
-- After each frame, `icons::draw` writes `ESC ]1337;File=inline=1;width=2;height=1;preserveAspectRatio=1;doNotMoveCursor=1:<base64>` at each icon slot. ratatui only rewrites changed cells and a rewritten cell erases the image under it, so all icons are redrawn whenever the frame or the icon set changes.
-- When a row that had an icon no longer has one (tab switch, filter, shorter list), the screen is cleared and fully redrawn first, because ratatui wouldn't touch a cell that stays blank and the image would remain.
+- Icons are cached by bundle path and loaded lazily, at most 6 distinct bundles per tick, without waiting for a key while loading, so startup isn't delayed (rasterising all 124 running apps at once takes about 1s).
+- After each frame, `icons::draw` writes `ESC ]1337;File=inline=1;size=<bytes>;width=2;height=1;preserveAspectRatio=1;doNotMoveCursor=1:<base64>` at each icon slot. ratatui only rewrites changed cells and a rewritten cell erases the image under it, so all icons are redrawn whenever the frame or the icon set changes.
+- Icons are not drawn while the force-quit or help modal is open.
+- When a cell that had an icon no longer has one (tab switch, filter, shorter list), the screen is cleared and fully redrawn first, because ratatui wouldn't touch a cell that stays blank and the image would remain.

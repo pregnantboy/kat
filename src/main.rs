@@ -30,12 +30,18 @@ fn main() -> std::io::Result<()> {
 fn run(terminal: &mut DefaultTerminal, m: &mut Model) -> std::io::Result<()> {
     let mut last = 0u64;
     let mut drawn: Vec<(u16, u16)> = Vec::new();
+    let mut timeout = Duration::from_millis(250);
     loop {
         let mut frame = terminal.draw(|f| ui::draw(f, m))?;
         if m.icons_on {
-            // A row that had an icon and is now blank isn't rewritten by ratatui, so the image would stay.
-            // Clearing erases every image; the redraw then repaints all cells.
-            let now: Vec<(u16, u16)> = m.icon_slots.iter().map(|(x, y, _)| (*x, *y)).collect();
+            // A cell that had an icon and now has none isn't rewritten by ratatui if it stays blank, so the
+            // image would stay. Clearing erases every image; the redraw then repaints all cells.
+            let now: Vec<(u16, u16)> = m
+                .icon_slots
+                .iter()
+                .filter(|(_, _, b)| matches!(m.icons.get(b), Some(Some(_))))
+                .map(|(x, y, _)| (*x, *y))
+                .collect();
             if drawn.iter().any(|p| !now.contains(p)) {
                 terminal.clear()?;
                 frame = terminal.draw(|f| ui::draw(f, m))?;
@@ -59,9 +65,12 @@ fn run(terminal: &mut DefaultTerminal, m: &mut Model) -> std::io::Result<()> {
                 icons::draw(&slots)?;
                 drawn = slots.iter().map(|(x, y, _)| (*x, *y)).collect();
             }
-            m.load_icons();
+            // Don't wait for a key while icons are still loading, so they fill in quickly.
+            if m.load_icons() {
+                timeout = Duration::ZERO;
+            }
         }
-        if event::poll(Duration::from_millis(250))? {
+        if event::poll(std::mem::replace(&mut timeout, Duration::from_millis(250)))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press && !m.on_key(key) {
                     return Ok(());

@@ -1,7 +1,7 @@
 use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, BorderType, Clear, HighlightSpacing, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 use crate::apps::{App, Kind};
@@ -227,10 +227,15 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
     if items.is_empty() {
         f.render_widget(Paragraph::new(empty).dim().alignment(Alignment::Center), body);
     } else {
-        let list = List::new(items).highlight_style(Style::new().reversed()).highlight_symbol("▌");
+        // Always reserve the highlight column: icon slots below assume it.
+        let list = List::new(items)
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol("▌")
+            .highlight_spacing(HighlightSpacing::Always);
         let tab = m.tab;
         f.render_stateful_widget(list, body, &mut m.picker(tab).list);
-        if m.icons_on {
+        // No icons under a modal: they would draw over it on narrow terminals.
+        if m.icons_on && m.confirm.is_none() && !m.help {
             let offset = m.picker(tab).list.offset();
             let paths: Vec<Option<String>> = match tab {
                 Tab::Apps => m.visible().iter().map(|a| Some(a.bundle_path.clone()).filter(|p| !p.is_empty())).collect(),
@@ -379,6 +384,10 @@ mod tests {
         render(&mut m, 100, 10);
         // Border (1) + header + rule put the first row at y = 3; the second row has the bundle.
         assert_eq!(m.icon_slots, vec![(5, 4, "/Applications/Visual Studio Code.app".to_string())]);
+        m.help = true;
+        render(&mut m, 100, 10);
+        assert!(m.icon_slots.is_empty(), "no icons under a modal");
+        m.help = false;
         m.icons_on = false;
         render(&mut m, 100, 10);
         assert!(m.icon_slots.is_empty());

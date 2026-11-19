@@ -324,13 +324,19 @@ impl Model {
     }
 
     /// Rasterises a few missing icons per tick so startup stays fast.
-    pub fn load_icons(&mut self) {
-        let missing: Vec<String> =
-            self.icon_slots.iter().map(|(_, _, path)| path).filter(|p| !self.icons.contains_key(*p)).take(6).cloned().collect();
-        for path in missing {
-            let png = apps::icon_png(&path);
-            self.icons.insert(path, png);
+    /// Returns whether any icon was loaded.
+    pub fn load_icons(&mut self) -> bool {
+        let mut missing: Vec<String> = Vec::new();
+        for (_, _, path) in &self.icon_slots {
+            if !self.icons.contains_key(path) && !missing.contains(path) && missing.len() < 6 {
+                missing.push(path.clone());
+            }
         }
+        for path in &missing {
+            let png = apps::icon_png(path);
+            self.icons.insert(path.clone(), png);
+        }
+        !missing.is_empty()
     }
 
     pub fn tick(&mut self) {
