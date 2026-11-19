@@ -585,7 +585,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "killer"
+name = "kat"
 version = "0.1.0"
 dependencies = [
  "libc",

@@ -5,6 +5,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::ListState;
 
 use crate::apps::{self, App, Kind};
+use crate::kitten;
 use crate::ports::{self, Port};
 
 const TOAST_TTL: Duration = Duration::from_secs(3);
@@ -84,8 +85,8 @@ pub struct Picker {
     pub selected: HashSet<i32>,
     pub list: ListState,
     pub pending: HashMap<i32, Instant>,
-    /// Quit pids confirmed dead; their rows stay until the next refresh.
-    pub gone: HashSet<i32>,
+    /// Quit pids confirmed dead, and when; their rows stay until the next refresh.
+    pub gone: HashMap<i32, Instant>,
 }
 
 impl Picker {
@@ -135,7 +136,7 @@ impl Picker {
             if !alive(pid) {
                 self.pending.remove(&pid);
                 self.selected.remove(&pid);
-                self.gone.insert(pid);
+                self.gone.insert(pid, Instant::now());
             } else if since.elapsed() >= QUIT_TIMEOUT {
                 self.pending.remove(&pid);
                 stuck.push(pid);
@@ -172,6 +173,12 @@ pub struct Model {
     pub my_uid: u32,
     pub self_pid: i32,
     pub home: String,
+    /// Kitten clock: startup, the last quit sent, the last process seen to die.
+    pub born: Instant,
+    pub swat_at: Option<Instant>,
+    pub happy_at: Option<Instant>,
+    /// Where the last frame drew the kitten, so its animation does not count as a screen change for icons.
+    pub kitten_area: Option<ratatui::layout::Rect>,
 }
 
 impl Model {
@@ -198,6 +205,10 @@ impl Model {
             my_uid: ports::my_uid(),
             self_pid: std::process::id() as i32,
             home: std::env::var("HOME").unwrap_or_default(),
+            born: Instant::now(),
+            swat_at: None,
+            happy_at: None,
+            kitten_area: None,
         }
     }
 
@@ -250,7 +261,7 @@ impl Model {
                 .map(|a| Item {
                     pid: a.pid,
                     label: a.name.clone(),
-                    protected: self.protected(a) || self.app_pick.gone.contains(&a.pid),
+                    protected: self.protected(a) || self.app_pick.gone.contains_key(&a.pid),
                 })
                 .collect(),
             Tab::Ports => self
@@ -259,7 +270,7 @@ impl Model {
                 .map(|p| Item {
                     pid: p.pid,
                     label: port_label(p),
-                    protected: self.port_protection(p).is_some() || self.port_pick.gone.contains(&p.pid),
+                    protected: self.port_protection(p).is_some() || self.port_pick.gone.contains_key(&p.pid),
                 })
                 .collect(),
         }
@@ -288,13 +299,28 @@ impl Model {
         self.picker(self.tab).clamp(n);
     }
 
+    /// Puts the cursor back on `pid` if it is still listed, so rows vanishing above it don't move it to another process.
+    fn follow_cursor(&mut self, pid: Option<i32>) {
+        let items = self.items();
+        match pid.and_then(|pid| items.iter().position(|i| i.pid == pid)) {
+            Some(i) => self.picker(self.tab).list.select(Some(i)),
+            None => self.clamp_cursor(),
+        }
+    }
+
+    fn cursor_pid(&self) -> Option<i32> {
+        self.pick().cursor_pid(&self.items())
+    }
+
     pub fn refresh(&mut self) {
-        self.apply_refresh(apps::list());
+        // NSWorkspace can list an app for a moment after it exits.
+        self.apply_refresh(apps::list().into_iter().filter(|a| ports::alive(a.pid)).collect());
         self.apply_ports(ports::list());
     }
 
     /// Split from refresh() so tests can feed a fake app list.
     pub fn apply_refresh(&mut self, apps: Vec<App>) {
+        let cursor = self.cursor_pid();
         // Rows keep their place between refreshes so the cursor doesn't jump; only the first load and `s` sort.
         if self.apps.is_empty() {
             self.apps = apps;
@@ -312,15 +338,16 @@ impl Model {
         }
         let alive: HashSet<i32> = self.apps.iter().map(|a| a.pid).collect();
         self.app_pick.prune(&alive);
-        self.clamp_cursor();
+        self.follow_cursor(cursor);
     }
 
     /// `ports` arrives sorted by port from ports::list().
     pub fn apply_ports(&mut self, ports: Vec<Port>) {
+        let cursor = self.cursor_pid();
         self.ports = ports;
         let alive: HashSet<i32> = self.ports.iter().map(|p| p.pid).collect();
         self.port_pick.prune(&alive);
-        self.clamp_cursor();
+        self.follow_cursor(cursor);
     }
 
     /// Rasterises a few missing icons per tick so startup stays fast.
@@ -340,6 +367,7 @@ impl Model {
     }
 
     pub fn tick(&mut self) {
+        let dead = self.app_pick.gone.len() + self.port_pick.gone.len();
         let stuck = self.app_pick.check(ports::alive);
         if !stuck.is_empty() {
             let names: Vec<&str> =
@@ -356,9 +384,35 @@ impl Model {
                 .collect();
             self.set_toast(format!("{} still running, try ⇧Q", labels.join(", ")));
         }
+        if self.app_pick.gone.len() + self.port_pick.gone.len() > dead {
+            self.happy_at = Some(Instant::now());
+        }
+        // Once every quit row has finished turning to dust, drop them and pick up anything new.
+        if self.dust_settled() {
+            self.refresh();
+        }
         if self.toast.as_ref().is_some_and(|(_, t)| t.elapsed() >= TOAST_TTL) {
             self.toast = None;
         }
+    }
+
+    fn dust_settled(&self) -> bool {
+        let mut gone = self.app_pick.gone.values().chain(self.port_pick.gone.values()).peekable();
+        gone.peek().is_some() && gone.all(|t| t.elapsed() >= kitten::PUFF_FOR)
+    }
+
+    /// Any quit or stop sent and not yet settled.
+    pub fn quitting(&self) -> bool {
+        !self.app_pick.pending.is_empty() || !self.port_pick.pending.is_empty()
+    }
+
+    /// True while the kitten or a dust puff is mid-animation, so the loop should redraw quickly.
+    pub fn animating(&self) -> bool {
+        let since = |t: Option<Instant>| t.map(|t| t.elapsed());
+        self.quitting()
+            || kitten::busy(since(self.swat_at), since(self.happy_at))
+            || !self.app_pick.gone.is_empty()
+            || !self.port_pick.gone.is_empty()
     }
 
     pub fn targets(&self) -> Vec<Item> {
@@ -382,6 +436,9 @@ impl Model {
             } else {
                 failed.push(t.label);
             }
+        }
+        if !sent.is_empty() {
+            self.swat_at = Some(Instant::now());
         }
         self.picker(tab).selected.clear();
         let (doing, verb) = match (tab, force) {
@@ -607,6 +664,28 @@ mod tests {
     }
 
     #[test]
+    fn refresh_keeps_cursor_on_the_same_pid_when_rows_above_vanish() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        m.app_pick.list.select(Some(2));
+        let pid = m.cursor_pid();
+        assert!(pid.is_some());
+        let first = m.visible()[0].pid;
+        m.apply_refresh(sample().into_iter().filter(|a| a.pid != first).collect());
+        assert_eq!(m.cursor_pid(), pid);
+    }
+
+    #[test]
+    fn dust_settles_once_every_gone_row_has_puffed() {
+        let mut m = port_model();
+        assert!(!m.dust_settled());
+        m.app_pick.gone.insert(1, Instant::now() - kitten::PUFF_FOR);
+        assert!(m.dust_settled());
+        m.port_pick.gone.insert(10, Instant::now());
+        assert!(!m.dust_settled());
+    }
+
+    #[test]
     fn tick_does_not_refresh_rows() {
         let mut m = port_model();
         m.apply_refresh(sample());
@@ -691,7 +770,7 @@ mod tests {
         p.selected.insert(1);
         assert!(p.check(|_| false).is_empty());
         assert!(p.pending.is_empty() && p.selected.is_empty());
-        assert_eq!(p.gone, HashSet::from([1]));
+        assert_eq!(p.gone.keys().collect::<Vec<_>>(), [&1]);
     }
 
     #[test]
@@ -708,7 +787,7 @@ mod tests {
     fn gone_rows_are_not_targets_or_selected_by_select_all() {
         let mut m = Model::new(excluded(), TERMINAL);
         m.apply_refresh(sample());
-        m.app_pick.gone.insert(1);
+        m.app_pick.gone.insert(1, Instant::now());
         m.toggle_all();
         assert_eq!(target_pids(&m), vec![2, 7]);
         m.app_pick.selected.insert(1);
@@ -719,8 +798,8 @@ mod tests {
     fn refresh_clears_gone() {
         let mut m = port_model();
         m.apply_refresh(sample());
-        m.app_pick.gone.insert(1);
-        m.port_pick.gone.insert(10);
+        m.app_pick.gone.insert(1, Instant::now());
+        m.port_pick.gone.insert(10, Instant::now());
         m.apply_refresh(sample());
         m.apply_ports(vec![port(3000, 10, "/x/node")]);
         assert!(m.app_pick.gone.is_empty() && m.port_pick.gone.is_empty());

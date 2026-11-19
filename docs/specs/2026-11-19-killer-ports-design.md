@@ -1,6 +1,6 @@
-# killer: Ports tab design
+# kat: Ports tab design
 
-Adds a second tab to `killer` that lists listening TCP ports, names what's running on each one in a form a person recognises, and stops or kills the owning process. Builds on `docs/specs/2026-11-19-killer-design.md`. Everything there still applies unless this file says otherwise.
+Adds a second tab to `kat` that lists listening TCP ports, names what's running on each one in a form a person recognises, and stops or kills the owning process. Builds on `docs/specs/2026-11-19-killer-design.md`. Everything there still applies unless this file says otherwise.
 
 ## Scope
 
@@ -45,7 +45,7 @@ New dependency: `libproc` 0.15. `libc` has no socket-info structs; `lsof` takes 
 | Badge | Rule |
 |---|---|
 | `this terminal` | pid is the launching terminal |
-| `killer` | pid is `killer` itself |
+| `kat` | pid is `kat` itself |
 | `other user` | uid is not the current user |
 | `docker` | executable path contains `OrbStack` or `Docker`. These own every forwarded container port, and killing them stops every container |
 | `system` | executable is under `/System/` or `/usr/`, except `/usr/local/` |
@@ -64,7 +64,7 @@ Protected rows are dimmed, show a lock, and can't be selected. They are hidden b
 ## Screen
 
 ```
-╭─ killer ─ Apps │ Ports ───────────────────────────────────────────╮
+╭─ kat ─ Apps │ Ports ───────────────────────────────────────────╮
 │  / 3000                                  1 selected · 4 ports     │
 ├───────────────────────────────────────────────────────────────────┤
 │ ● :3000   next-server (v16.4.1)  ~/orca/…/apps/suite  node  58388 │
@@ -102,6 +102,6 @@ Unit tests:
 
 Manual:
 
-1. Run `python3 -m http.server 8765` in another tab. In `killer`, press `tab`, find `:8765`, and press `⏎`. The server exits, the row shows `gone`, and it disappears after `r`.
+1. Run `python3 -m http.server 8765` in another tab. In `kat`, press `tab`, find `:8765`, and press `⏎`. The server exits, the row turns to dust and disappears.
 2. Run `python3 -c "import signal,socket; signal.signal(signal.SIGTERM, signal.SIG_IGN); s=socket.socket(); s.bind(('127.0.0.1',8766)); s.listen(); input()"`. Press `⏎` on `:8766`. After 10–12s the toast says `still running, try ⇧Q`. Press `⇧Q`, then `y`. The process exits.
 3. `:5000` (ControlCenter) and any OrbStack or Docker rows are dimmed with a lock and can't be selected.

@@ -11,7 +11,7 @@ pub fn parse(text: &str) -> Vec<String> {
 }
 
 fn path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/killer/exclude"))
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/kat/exclude"))
 }
 
 /// The exclusion list (defaults plus the user's file), and a warning for the UI if the file couldn't be read.

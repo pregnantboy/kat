@@ -161,7 +161,7 @@ pub fn protection(p: &Port, my_uid: u32, terminal_pid: i32, self_pid: i32) -> Op
     if p.pid == terminal_pid {
         Some("this terminal")
     } else if p.pid == self_pid {
-        Some("killer")
+        Some("kat")
     } else if p.uid != my_uid {
         Some("other user")
     } else if p.exe.contains("OrbStack") || p.exe.contains("Docker") {
@@ -252,7 +252,7 @@ mod tests {
         let ok = port(3000, 10, NODE, &[], None);
         assert_eq!(protection(&ok, me, 4, 99), None);
         assert_eq!(protection(&port(1, 4, NODE, &[], None), me, 4, 99), Some("this terminal"));
-        assert_eq!(protection(&port(1, 99, NODE, &[], None), me, 4, 99), Some("killer"));
+        assert_eq!(protection(&port(1, 99, NODE, &[], None), me, 4, 99), Some("kat"));
         assert_eq!(protection(&Port { uid: 0, ..ok.clone() }, me, 4, 99), Some("other user"));
         let orb = "/Applications/OrbStack.app/Contents/MacOS/OrbStack";
         assert_eq!(protection(&port(5432, 10, orb, &[], None), me, 4, 99), Some("docker"));

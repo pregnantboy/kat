@@ -5,7 +5,7 @@ use std::io::Write;
 /// tmux passes the escape through badly, and inherits a stale TERM_PROGRAM, so icons are off inside it.
 pub fn supported() -> bool {
     let term = std::env::var("TERM_PROGRAM").unwrap_or_default();
-    std::env::var("KILLER_ICONS").as_deref() != Ok("0")
+    std::env::var("KAT_ICONS").as_deref() != Ok("0")
         && std::env::var_os("TMUX").is_none()
         && matches!(term.as_str(), "iTerm.app" | "WezTerm")
 }

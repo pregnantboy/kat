@@ -1,6 +1,7 @@
 mod apps;
 mod config;
 mod icons;
+mod kitten;
 mod model;
 mod ports;
 mod ui;
@@ -51,7 +52,14 @@ fn run(terminal: &mut DefaultTerminal, m: &mut Model) -> std::io::Result<()> {
             // so redraw every icon whenever anything on screen or any icon changed.
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            frame.buffer.content().hash(&mut h);
+            // The kitten animates on its own; its cells changing doesn't touch any icon.
+            let mut screen = frame.buffer.clone();
+            if let Some(area) = m.kitten_area {
+                for p in area.positions() {
+                    screen[p].reset();
+                }
+            }
+            screen.content().hash(&mut h);
             m.icon_slots.hash(&mut h);
             m.icons.len().hash(&mut h);
             let sig = h.finish();
@@ -70,7 +78,11 @@ fn run(terminal: &mut DefaultTerminal, m: &mut Model) -> std::io::Result<()> {
                 timeout = Duration::ZERO;
             }
         }
-        if event::poll(std::mem::replace(&mut timeout, Duration::from_millis(250)))? {
+        let mut wait = std::mem::replace(&mut timeout, Duration::from_millis(250));
+        if m.animating() {
+            wait = wait.min(Duration::from_millis(80));
+        }
+        if event::poll(wait)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press && !m.on_key(key) {
                     return Ok(());

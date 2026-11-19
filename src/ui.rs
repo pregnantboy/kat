@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, BorderType, Clear, HighlightSpacing, List, ListIte
 use ratatui::Frame;
 
 use crate::apps::{App, Kind};
+use crate::kitten;
 use crate::model::{is_excluded, Model, Sort, Tab};
 use crate::ports::{self, Port};
 
@@ -60,7 +61,7 @@ fn marker(protected: bool, selected: bool) -> Span<'static> {
 }
 
 fn badge(m: &Model, a: &App) -> &'static str {
-    if m.app_pick.gone.contains(&a.pid) {
+    if m.app_pick.gone.contains_key(&a.pid) {
         "gone"
     } else if m.app_pick.pending.contains_key(&a.pid) {
         "quitting…"
@@ -80,29 +81,33 @@ fn badge(m: &Model, a: &App) -> &'static str {
 }
 
 fn row(m: &Model, a: &App, max_mem: u64) -> ListItem<'static> {
-    let gone = m.app_pick.gone.contains(&a.pid);
+    let gone = m.app_pick.gone.contains_key(&a.pid);
     let protected = m.protected(a);
     let name: String = a.name.chars().take(NAME_WIDTH).collect();
     let mem = a.memory_bytes.map(fmt_bytes).unwrap_or_else(|| "—".into());
     let frac = a.memory_bytes.unwrap_or(0) as f64 / max_mem as f64;
     let badge = badge(m, a);
     let line = Line::from(vec![
-        if gone { Span::raw("· ").dim() } else { marker(protected, m.app_pick.selected.contains(&a.pid)) },
+        if gone { Span::raw("🐾") } else { marker(protected, m.app_pick.selected.contains(&a.pid)) },
         Span::raw(if m.icons_on { "   " } else { "" }), // room for the icon, drawn after the frame
         Span::raw(format!(" {name:<NAME_WIDTH$} ")),
-        Span::styled(format!("{:<BAR_WIDTH$}", bar(frac, BAR_WIDTH)), Style::new().fg(ACCENT)),
-        Span::raw(format!(" {mem:>8}  ")),
+        // A quit app uses no memory, so a gone row drops its bar and size.
+        Span::styled(format!("{:<BAR_WIDTH$}", if gone { String::new() } else { bar(frac, BAR_WIDTH) }), Style::new().fg(ACCENT)),
+        Span::raw(format!(" {:>8}  ", if gone { "" } else { &mem })),
         if badge == "quitting…" { Span::raw(badge).fg(Color::Yellow) } else { Span::raw(badge).dim() },
     ]);
+    if let Some(dust) = m.app_pick.gone.get(&a.pid).and_then(|t| kitten::puff(&line, t.elapsed())) {
+        return ListItem::new(dust);
+    }
     ListItem::new(if protected || gone { line.dim() } else { line })
 }
 
 fn port_row(m: &Model, p: &Port) -> ListItem<'static> {
-    let gone = m.port_pick.gone.contains(&p.pid);
+    let gone = m.port_pick.gone.contains_key(&p.pid);
     let protection = m.port_protection(p);
     let detail = protection.map(String::from).or_else(|| ports::project(p, &m.home)).unwrap_or_default();
     let mut spans = vec![
-        if gone { Span::raw("· ").dim() } else { marker(protection.is_some(), m.port_pick.selected.contains(&p.pid)) },
+        if gone { Span::raw("🐾") } else { marker(protection.is_some(), m.port_pick.selected.contains(&p.pid)) },
         Span::raw(if m.icons_on { "   " } else { "" }), // room for the icon, drawn after the frame
         Span::raw(format!(" :{:<6} ", p.port)),
         Span::raw(format!("{:<PORT_NAME_WIDTH$} ", fit(&ports::name(p), PORT_NAME_WIDTH))),
@@ -115,6 +120,9 @@ fn port_row(m: &Model, p: &Port) -> ListItem<'static> {
         spans.push(Span::raw("  stopping…").fg(Color::Yellow));
     }
     let line = Line::from(spans);
+    if let Some(dust) = m.port_pick.gone.get(&p.pid).and_then(|t| kitten::puff(&line, t.elapsed())) {
+        return ListItem::new(dust);
+    }
     ListItem::new(if protection.is_some() || gone { line.dim() } else { line })
 }
 
@@ -141,7 +149,7 @@ fn tab_title(m: &Model) -> Line<'static> {
         if m.tab == tab { Span::raw(text).bold().fg(ACCENT) } else { Span::raw(text).dim() }
     };
     Line::from(vec![
-        " killer ".bold().fg(ACCENT),
+        " kat ".bold().fg(ACCENT),
         Span::raw("─ "),
         label(Tab::Apps, "Apps"),
         Span::raw(" │ ").dim(),
@@ -161,14 +169,26 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
         .title_bottom(Line::from(keys).dim());
     let inner = block.inner(f.area());
     f.render_widget(block, f.area());
+    // The kitten needs 6 rows, so it only sits in the header when that still leaves room for the list.
+    let show_kitten = inner.height >= 20 && inner.width >= 60;
     let [header, rule1, body, rule2, footer] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(if show_kitten { kitten::HEIGHT } else { 1 }),
         Constraint::Length(1),
         Constraint::Fill(1),
         Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(inner);
+
+    let [header, kitten_area] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(if show_kitten { kitten::WIDTH } else { 0 })])
+            .areas(header);
+    m.kitten_area = show_kitten.then_some(kitten_area);
+    if show_kitten {
+        let since = |t: Option<std::time::Instant>| t.map(|t| t.elapsed());
+        let pose = kitten::pose(m.born.elapsed(), since(m.swat_at), since(m.happy_at), m.quitting());
+        f.render_widget(Paragraph::new(kitten::lines(pose)), kitten_area);
+    }
 
     // Header: filter on the left, selection summary on the right.
     let filter = if m.filtering {
@@ -391,5 +411,28 @@ mod tests {
         m.icons_on = false;
         render(&mut m, 100, 10);
         assert!(m.icon_slots.is_empty());
+    }
+
+    #[test]
+    fn kitten_sits_in_the_header_only_when_tall_enough() {
+        let mut m = Model::new(vec![], -1);
+        let text = render(&mut m, 80, 30);
+        assert!(text.contains('▀'));
+        assert_eq!(m.kitten_area.map(|r| (r.width, r.height)), Some((kitten::WIDTH, kitten::HEIGHT)));
+        let text = render(&mut m, 100, 10);
+        assert!(!text.contains('▀') && m.kitten_area.is_none());
+    }
+
+    #[test]
+    fn gone_port_turns_to_dust_then_shows_a_paw() {
+        let mut m = Model::new(vec![], -1);
+        m.my_uid = 502;
+        m.tab = Tab::Ports;
+        m.apply_ports(vec![Port { port: 3000, pid: 42, uid: 502, exe: "/x/node".into(), args: vec![], cwd: None }]);
+        m.port_pick.gone.insert(42, std::time::Instant::now());
+        assert!(!render(&mut m, 100, 10).contains(":3000"));
+        m.port_pick.gone.insert(42, std::time::Instant::now() - kitten::PUFF_FOR);
+        let text = render(&mut m, 100, 10);
+        assert!(text.contains("🐾") && text.contains(":3000") && text.contains("gone"));
     }
 }

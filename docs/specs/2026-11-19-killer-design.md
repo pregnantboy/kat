@@ -1,4 +1,4 @@
-# killer: design
+# kat: design
 
 A macOS terminal UI for quitting several apps at once, modelled on the features of QuitAll (amicoapps.com/app/quitall).
 
@@ -44,7 +44,7 @@ The only file that calls AppKit or `libc`.
 
 ### `src/config.rs`
 
-Reads `~/.config/killer/exclude`, a plain text file with one bundle ID per line. Anything after a `#` is a comment, and blank lines are ignored. Bundle IDs match case-insensitively, the way macOS treats them. Entries in the file are added to the defaults. If the file is missing, only the defaults apply. If it can't be read, the defaults apply and the UI shows a toast. Default exclusions: `com.apple.finder`.
+Reads `~/.config/kat/exclude`, a plain text file with one bundle ID per line. Anything after a `#` is a comment, and blank lines are ignored. Bundle IDs match case-insensitively, the way macOS treats them. Entries in the file are added to the defaults. If the file is missing, only the defaults apply. If it can't be read, the defaults apply and the UI shows a toast. Default exclusions: `com.apple.finder`.
 
 ### `src/model.rs` and `src/ui.rs`
 
@@ -55,7 +55,7 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 ## Screen
 
 ```
-╭─ killer ──────────────────────────────────────────────────────╮
+╭─ kat ──────────────────────────────────────────────────────╮
 │  / sla▏                                    3 selected · 2.4 GB │
 ├────────────────────────────────────────────────────────────────┤
 │ ● Slack              ████████▌         1.3 GB                  │
@@ -98,18 +98,18 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 
 1. The loop polls for key events every 250ms.
 2. The lists refresh only when you press `r` (and once at startup), so rows never move or disappear on their own. `r` refreshes apps and ports and toasts `↻ N apps · M ports`. On refresh, running apps keep their position with updated memory, quit apps disappear, and newly launched apps are added at the bottom; the list is sorted when it first loads and when `s` is pressed. Filtering and the background toggle hide rows without reordering them.
-3. After a quit, the targeted rows show `quitting…`. `killer` checks only those pids on every tick: when one exits, its row shows `gone`, is dimmed, and can't be selected until the next `r` removes it. The force-quit confirm re-checks its targets through the safety gate when you press `y`.
+3. After a quit, the targeted rows show `quitting…`. `kat` checks only those pids on every tick: when one exits, its row turns to dust and the list refreshes, which drops it and picks up anything new. The cursor stays on the process it was on; if that process was the one quit, it moves to the next row. The force-quit confirm re-checks its targets through the safety gate when you press `y`.
 4. If an app is still running 10 seconds after a polite quit, the toast says `<name> still open (save dialog?)`. The row goes back to normal so it can be force quit.
 5. If `quit` or `force_quit` returns false, the toast says `Couldn't quit <name>`. The row stays until the next `r`.
 
 ## Safety
 
-- The app that is frontmost when `killer` starts is treated as the launching terminal and is always excluded. If it can't be detected, a toast says `Couldn't detect this terminal, so it isn't protected`.
+- The app that is frontmost when `kat` starts is treated as the launching terminal and is always excluded. If it can't be detected, a toast says `Couldn't detect this terminal, so it isn't protected`.
 - Background apps (menu bar or helper) whose bundle ID starts with `com.apple.` or is empty are always protected. macOS reports `loginwindow`, Dock, WindowManager, and SystemUIServer as menu bar apps, and quitting `loginwindow` logs the user out. These rows show a `system` badge.
 - Every quit path gets its targets from one function, `quit_targets`, which removes excluded apps and the launching terminal. No key handler calls `apps::quit` or `apps::force_quit` with a pid that didn't come from `quit_targets`.
 - Force quit always asks for confirmation.
 
-Known limit: if `killer` is started while another app is frontmost (for example from a script), that app is protected instead of the terminal. Walking the process tree from `getppid()` would fix this.
+Known limit: if `kat` is started while another app is frontmost (for example from a script), that app is protected instead of the terminal. Walking the process tree from `getppid()` would fix this.
 
 ## Testing
 
@@ -126,11 +126,11 @@ Manual checks for the AppKit layer:
 1. Open TextEdit, type something, don't save. Select it and press `⏎`. TextEdit asks to save.
 2. Cancel the save dialog. After 10 seconds the "still open" toast appears.
 3. Press `Q`, confirm with `y`. TextEdit closes without asking.
-4. Press `a` then `⏎`. The terminal running `killer` and Finder stay open.
+4. Press `a` then `⏎`. The terminal running `kat` and Finder stay open.
 
 ## App icons
 
-In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is `iTerm.app` or `WezTerm`, and not inside tmux), rows show the app's icon between the marker and the name. Set `KILLER_ICONS=0` to turn them off. Other terminals get no icons and no reserved space.
+In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is `iTerm.app` or `WezTerm`, and not inside tmux), rows show the app's icon between the marker and the name. Set `KAT_ICONS=0` to turn them off. Other terminals get no icons and no reserved space.
 
 - Apps rows use the app's bundle path; Ports rows use the outermost `.app` bundle in the executable path (`ports::app_path`). Rows without a bundle (`node`, `codex`) keep the blank space so columns line up.
 - `apps::icon_png(path)` asks `NSWorkspace.iconForFile` for the icon and rasterises it to PNG at 32pt (64px on Retina) with `CGImageForProposedRect`. No image crate.
@@ -138,3 +138,7 @@ In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is
 - After each frame, `icons::draw` writes `ESC ]1337;File=inline=1;size=<bytes>;width=2;height=1;preserveAspectRatio=1;doNotMoveCursor=1:<base64>` at each icon slot. ratatui only rewrites changed cells and a rewritten cell erases the image under it, so all icons are redrawn whenever the frame or the icon set changes.
 - Icons are not drawn while the force-quit or help modal is open.
 - When a cell that had an icon no longer has one (tab switch, filter, shorter list), the screen is cleared and fully redrawn first, because ratatui wouldn't touch a cell that stays blank and the image would remain.
+
+## Kitten
+
+When the window leaves at least 20 rows and 60 columns inside the border, a pixel-art ginger kitten sits at the right of the header (19×6 cells, two pixels per cell with half blocks, 24-bit colour). It breathes every 800ms and blinks every 4s. When a quit or stop is sent it swats (paw up, then a swipe, 400ms). When a pending process is seen to die it squints happily for 900ms, and that row breaks into dust over 450ms. While a quit is pending it keeps batting: paw up, swipe, a 0.5s pause, again. While anything is animating the loop redraws every 80ms instead of 250ms. The kitten's cells are left out of the hash that decides when to redraw icons, so it never makes them flicker.
