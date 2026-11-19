@@ -109,6 +109,12 @@ fn file_name(path: &str) -> &str {
     path.trim().rsplit('/').next().unwrap_or(path)
 }
 
+/// The outermost .app bundle the executable lives in, e.g. `/Applications/OrbStack.app`.
+pub fn app_path(p: &Port) -> Option<String> {
+    let end = p.exe.find(".app/")? + ".app".len();
+    Some(p.exe[..end].to_string())
+}
+
 /// The executable's file name, e.g. `node`.
 pub fn process(p: &Port) -> &str {
     file_name(&p.exe)
@@ -208,6 +214,13 @@ mod tests {
         let codex = "/Users/ian/.codex/bin/codex";
         assert_eq!(name(&port(50892, 1, codex, &["codex", "--no-daemon", "-c", "x=1"], None)), "codex");
         assert_eq!(name(&port(1, 1, "/usr/libexec/rapportd", &[], None)), "rapportd");
+    }
+
+    #[test]
+    fn app_path_is_the_outermost_bundle() {
+        let helper = "/Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper";
+        assert_eq!(app_path(&port(1, 1, helper, &[], None)).as_deref(), Some("/Applications/OrbStack.app"));
+        assert_eq!(app_path(&port(1, 1, NODE, &[], None)), None);
     }
 
     #[test]

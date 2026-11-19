@@ -15,6 +15,8 @@ pub struct App {
     pub pid: i32,
     pub kind: Kind,
     pub memory_bytes: Option<u64>,
+    /// The .app bundle's path, used to look up its icon. Empty for processes without a bundle.
+    pub bundle_path: String,
 }
 
 // A CLI has no Cocoa run loop, so NSWorkspace never sees launch/quit
@@ -48,6 +50,7 @@ pub fn list() -> Vec<App> {
                 pid,
                 kind,
                 memory_bytes: memory_bytes(pid),
+                bundle_path: app.bundleURL().and_then(|u| u.path()).map(|p| p.to_string()).unwrap_or_default(),
             })
         })
         .collect()
@@ -77,4 +80,17 @@ pub fn quit(pid: i32) -> bool {
 pub fn force_quit(pid: i32) -> bool {
     NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
         .is_some_and(|app| app.forceTerminate())
+}
+
+/// The icon macOS shows for `path` (an .app bundle), rasterised to a small PNG (64px on Retina).
+pub fn icon_png(path: &str) -> Option<Vec<u8>> {
+    use objc2::AllocAnyThread;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep};
+    use objc2_foundation::{NSDictionary, NSPoint, NSRect, NSSize, NSString};
+    let icon = NSWorkspace::sharedWorkspace().iconForFile(&NSString::from_str(path));
+    let mut rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(32.0, 32.0));
+    let cg = unsafe { icon.CGImageForProposedRect_context_hints(&mut rect, None, None) }?;
+    let rep = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &cg);
+    let png = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }?;
+    Some(png.to_vec())
 }

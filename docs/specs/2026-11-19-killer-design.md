@@ -128,3 +128,13 @@ Manual checks for the AppKit layer:
 2. Cancel the save dialog. After 10 seconds the "still open" toast appears.
 3. Press `Q`, confirm with `y`. TextEdit closes without asking.
 4. Press `a` then `⏎`. The terminal running `killer` and Finder stay open.
+
+## App icons
+
+In terminals that understand the iTerm2 inline-image protocol (`TERM_PROGRAM` is `iTerm.app` or `WezTerm`), rows show the app's icon between the marker and the name. Set `KILLER_ICONS=0` to turn them off. Other terminals get no icons and no reserved space.
+
+- Apps rows use the app's bundle path; Ports rows use the outermost `.app` bundle in the executable path (`ports::app_path`). Rows without a bundle (`node`, `codex`) keep the blank space so columns line up.
+- `apps::icon_png(path)` asks `NSWorkspace.iconForFile` for the icon and rasterises it to PNG at 32pt (64px on Retina) with `CGImageForProposedRect`. No image crate.
+- Icons are cached by bundle path and loaded lazily, at most 6 per tick, so startup isn't delayed (rasterising all 124 running apps at once takes about 1s).
+- After each frame, `icons::draw` writes `ESC ]1337;File=inline=1;width=2;height=1;preserveAspectRatio=1;doNotMoveCursor=1:<base64>` at each icon slot. ratatui only rewrites changed cells and a rewritten cell erases the image under it, so all icons are redrawn whenever the frame or the icon set changes.
+- When a row that had an icon no longer has one (tab switch, filter, shorter list), the screen is cleared and fully redrawn first, because ratatui wouldn't touch a cell that stays blank and the image would remain.

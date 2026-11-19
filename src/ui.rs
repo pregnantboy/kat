@@ -88,6 +88,7 @@ fn row(m: &Model, a: &App, max_mem: u64) -> ListItem<'static> {
     let badge = badge(m, a);
     let line = Line::from(vec![
         if gone { Span::raw("· ").dim() } else { marker(protected, m.app_pick.selected.contains(&a.pid)) },
+        Span::raw(if m.icons_on { "   " } else { "" }), // room for the icon, drawn after the frame
         Span::raw(format!(" {name:<NAME_WIDTH$} ")),
         Span::styled(format!("{:<BAR_WIDTH$}", bar(frac, BAR_WIDTH)), Style::new().fg(ACCENT)),
         Span::raw(format!(" {mem:>8}  ")),
@@ -102,6 +103,7 @@ fn port_row(m: &Model, p: &Port) -> ListItem<'static> {
     let detail = protection.map(String::from).or_else(|| ports::project(p, &m.home)).unwrap_or_default();
     let mut spans = vec![
         if gone { Span::raw("· ").dim() } else { marker(protection.is_some(), m.port_pick.selected.contains(&p.pid)) },
+        Span::raw(if m.icons_on { "   " } else { "" }), // room for the icon, drawn after the frame
         Span::raw(format!(" :{:<6} ", p.port)),
         Span::raw(format!("{:<PORT_NAME_WIDTH$} ", fit(&ports::name(p), PORT_NAME_WIDTH))),
         Span::raw(format!("{:<PROJECT_WIDTH$} ", fit_left(&detail, PROJECT_WIDTH))),
@@ -228,6 +230,19 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
         let list = List::new(items).highlight_style(Style::new().reversed()).highlight_symbol("▌");
         let tab = m.tab;
         f.render_stateful_widget(list, body, &mut m.picker(tab).list);
+        if m.icons_on {
+            let offset = m.picker(tab).list.offset();
+            let paths: Vec<Option<String>> = match tab {
+                Tab::Apps => m.visible().iter().map(|a| Some(a.bundle_path.clone()).filter(|p| !p.is_empty())).collect(),
+                Tab::Ports => m.visible_ports().iter().map(|p| ports::app_path(p)).collect(),
+            };
+            // Highlight symbol (1) + marker (2) + one space.
+            m.icon_slots = (0..body.height)
+                .filter_map(|i| paths.get(offset + i as usize)?.clone().map(|p| (body.x + 4, body.y + i, p)))
+                .collect();
+        } else {
+            m.icon_slots.clear();
+        }
     }
 
     if let Some((msg, _)) = &m.toast {
@@ -350,5 +365,22 @@ mod tests {
         for want in [":3000", "next-server (v16.4.1)", "~/code/shop", "node", "58388", ":5000", "ControlCenter", "system", "2 ports", "locked shown", "⏎ stop"] {
             assert!(text.contains(want), "missing {want}");
         }
+    }
+
+    #[test]
+    fn icon_slots_follow_rows_with_an_app_bundle() {
+        let mut m = Model::new(vec![], -1);
+        m.my_uid = 502;
+        m.icons_on = true;
+        m.tab = Tab::Ports;
+        let code = "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper";
+        let port = |port, exe: &str| Port { port, pid: port as i32, uid: 502, exe: exe.into(), args: vec![], cwd: None };
+        m.apply_ports(vec![port(3000, "/x/node"), port(63523, code)]);
+        render(&mut m, 100, 10);
+        // Border (1) + header + rule put the first row at y = 3; the second row has the bundle.
+        assert_eq!(m.icon_slots, vec![(5, 4, "/Applications/Visual Studio Code.app".to_string())]);
+        m.icons_on = false;
+        render(&mut m, 100, 10);
+        assert!(m.icon_slots.is_empty());
     }
 }

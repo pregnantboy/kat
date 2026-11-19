@@ -159,6 +159,10 @@ pub struct Model {
     pub filtering: bool,
     pub show_bg: bool,
     pub show_locked: bool,
+    pub icons_on: bool,
+    pub icons: HashMap<String, Option<Vec<u8>>>,
+    /// Where the last frame drew rows with an app bundle: (column, row, bundle path).
+    pub icon_slots: Vec<(u16, u16, String)>,
     pub sort: Sort,
     pub toast: Option<(String, Instant)>,
     pub confirm: Option<(Tab, Vec<Item>)>,
@@ -182,6 +186,9 @@ impl Model {
             filtering: false,
             show_bg: false,
             show_locked: false,
+            icons_on: false,
+            icons: HashMap::new(),
+            icon_slots: Vec::new(),
             sort: Sort::Memory,
             toast: None,
             confirm: None,
@@ -314,6 +321,16 @@ impl Model {
         let alive: HashSet<i32> = self.ports.iter().map(|p| p.pid).collect();
         self.port_pick.prune(&alive);
         self.clamp_cursor();
+    }
+
+    /// Rasterises a few missing icons per tick so startup stays fast.
+    pub fn load_icons(&mut self) {
+        let missing: Vec<String> =
+            self.icon_slots.iter().map(|(_, _, path)| path).filter(|p| !self.icons.contains_key(*p)).take(6).cloned().collect();
+        for path in missing {
+            let png = apps::icon_png(&path);
+            self.icons.insert(path, png);
+        }
     }
 
     pub fn tick(&mut self) {
@@ -477,7 +494,7 @@ mod tests {
     use super::*;
 
     fn app(pid: i32, name: &str, bundle_id: &str, kind: Kind, mem: Option<u64>) -> App {
-        App { name: name.into(), bundle_id: bundle_id.into(), pid, kind, memory_bytes: mem }
+        App { name: name.into(), bundle_id: bundle_id.into(), pid, kind, memory_bytes: mem, bundle_path: String::new() }
     }
 
     fn sample() -> Vec<App> {
