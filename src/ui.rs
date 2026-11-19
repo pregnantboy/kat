@@ -60,7 +60,9 @@ fn marker(protected: bool, selected: bool) -> Span<'static> {
 }
 
 fn badge(m: &Model, a: &App) -> &'static str {
-    if m.app_pick.pending.contains_key(&a.pid) {
+    if m.app_pick.gone.contains(&a.pid) {
+        "gone"
+    } else if m.app_pick.pending.contains_key(&a.pid) {
         "quitting…"
     } else if a.pid == m.terminal_pid {
         "this terminal"
@@ -78,36 +80,40 @@ fn badge(m: &Model, a: &App) -> &'static str {
 }
 
 fn row(m: &Model, a: &App, max_mem: u64) -> ListItem<'static> {
+    let gone = m.app_pick.gone.contains(&a.pid);
     let protected = m.protected(a);
     let name: String = a.name.chars().take(NAME_WIDTH).collect();
     let mem = a.memory_bytes.map(fmt_bytes).unwrap_or_else(|| "—".into());
     let frac = a.memory_bytes.unwrap_or(0) as f64 / max_mem as f64;
     let badge = badge(m, a);
     let line = Line::from(vec![
-        marker(protected, m.app_pick.selected.contains(&a.pid)),
+        if gone { Span::raw("· ").dim() } else { marker(protected, m.app_pick.selected.contains(&a.pid)) },
         Span::raw(format!(" {name:<NAME_WIDTH$} ")),
         Span::styled(format!("{:<BAR_WIDTH$}", bar(frac, BAR_WIDTH)), Style::new().fg(ACCENT)),
         Span::raw(format!(" {mem:>8}  ")),
         if badge == "quitting…" { Span::raw(badge).fg(Color::Yellow) } else { Span::raw(badge).dim() },
     ]);
-    ListItem::new(if protected { line.dim() } else { line })
+    ListItem::new(if protected || gone { line.dim() } else { line })
 }
 
 fn port_row(m: &Model, p: &Port) -> ListItem<'static> {
+    let gone = m.port_pick.gone.contains(&p.pid);
     let protection = m.port_protection(p);
     let detail = protection.map(String::from).or_else(|| ports::project(p, &m.home)).unwrap_or_default();
     let mut spans = vec![
-        marker(protection.is_some(), m.port_pick.selected.contains(&p.pid)),
+        if gone { Span::raw("· ").dim() } else { marker(protection.is_some(), m.port_pick.selected.contains(&p.pid)) },
         Span::raw(format!(" :{:<6} ", p.port)),
         Span::raw(format!("{:<PORT_NAME_WIDTH$} ", fit(&ports::name(p), PORT_NAME_WIDTH))),
         Span::raw(format!("{:<PROJECT_WIDTH$} ", fit_left(&detail, PROJECT_WIDTH))),
         Span::raw(format!("{:<10} {:>7}", fit(ports::process(p), 10), p.pid)).dim(),
     ];
-    if m.port_pick.pending.contains_key(&p.pid) {
+    if gone {
+        spans.push(Span::raw("  gone").dim());
+    } else if m.port_pick.pending.contains_key(&p.pid) {
         spans.push(Span::raw("  stopping…").fg(Color::Yellow));
     }
     let line = Line::from(spans);
-    ListItem::new(if protection.is_some() { line.dim() } else { line })
+    ListItem::new(if protection.is_some() || gone { line.dim() } else { line })
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {

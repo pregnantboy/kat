@@ -84,6 +84,8 @@ pub struct Picker {
     pub selected: HashSet<i32>,
     pub list: ListState,
     pub pending: HashMap<i32, Instant>,
+    /// Quit pids confirmed dead; their rows stay until the next refresh.
+    pub gone: HashSet<i32>,
 }
 
 impl Picker {
@@ -100,7 +102,7 @@ impl Picker {
     pub fn toggle_cursor(&mut self, items: &[Item]) -> Option<String> {
         let item = items.get(self.list.selected()?)?;
         if item.protected {
-            return Some(item.label.clone());
+            return Some(item.label.clone()); // protected or gone
         }
         if !self.selected.remove(&item.pid) {
             self.selected.insert(item.pid);
@@ -119,14 +121,25 @@ impl Picker {
         }
     }
 
-    /// Forgets pids that are gone, and returns (and forgets) pending quits older than the timeout.
-    pub fn prune(&mut self, alive: &HashSet<i32>) -> Vec<i32> {
+    /// Forgets pids that are no longer listed. Their rows are gone, so `gone` is cleared too.
+    pub fn prune(&mut self, alive: &HashSet<i32>) {
         self.selected.retain(|pid| alive.contains(pid));
         self.pending.retain(|pid, _| alive.contains(pid));
-        let stuck: Vec<i32> =
-            self.pending.iter().filter(|(_, t)| t.elapsed() >= QUIT_TIMEOUT).map(|(p, _)| *p).collect();
-        for pid in &stuck {
-            self.pending.remove(pid);
+        self.gone.clear();
+    }
+
+    /// Settles pending quits: dead pids become `gone`; returns (and forgets) live ones past the timeout.
+    pub fn check(&mut self, alive: impl Fn(i32) -> bool) -> Vec<i32> {
+        let mut stuck = Vec::new();
+        for (pid, since) in self.pending.clone() {
+            if !alive(pid) {
+                self.pending.remove(&pid);
+                self.selected.remove(&pid);
+                self.gone.insert(pid);
+            } else if since.elapsed() >= QUIT_TIMEOUT {
+                self.pending.remove(&pid);
+                stuck.push(pid);
+            }
         }
         stuck
     }
@@ -197,16 +210,25 @@ impl Model {
 
     /// The current tab's visible rows.
     pub fn items(&self) -> Vec<Item> {
+        // A gone row is protected too, so the gate and select-all skip it.
         match self.tab {
             Tab::Apps => self
                 .visible()
                 .into_iter()
-                .map(|a| Item { pid: a.pid, label: a.name.clone(), protected: self.protected(a) })
+                .map(|a| Item {
+                    pid: a.pid,
+                    label: a.name.clone(),
+                    protected: self.protected(a) || self.app_pick.gone.contains(&a.pid),
+                })
                 .collect(),
             Tab::Ports => self
                 .visible_ports()
                 .into_iter()
-                .map(|p| Item { pid: p.pid, label: port_label(p), protected: self.port_protection(p).is_some() })
+                .map(|p| Item {
+                    pid: p.pid,
+                    label: port_label(p),
+                    protected: self.port_protection(p).is_some() || self.port_pick.gone.contains(&p.pid),
+                })
                 .collect(),
         }
     }
@@ -257,12 +279,7 @@ impl Model {
             self.apps = merged;
         }
         let alive: HashSet<i32> = self.apps.iter().map(|a| a.pid).collect();
-        let stuck = self.app_pick.prune(&alive);
-        if !stuck.is_empty() {
-            let names: Vec<&str> =
-                self.apps.iter().filter(|a| stuck.contains(&a.pid)).map(|a| a.name.as_str()).collect();
-            self.set_toast(format!("{} still open (save dialog?)", names.join(", ")));
-        }
+        self.app_pick.prune(&alive);
         self.clamp_cursor();
     }
 
@@ -270,7 +287,18 @@ impl Model {
     pub fn apply_ports(&mut self, ports: Vec<Port>) {
         self.ports = ports;
         let alive: HashSet<i32> = self.ports.iter().map(|p| p.pid).collect();
-        let stuck = self.port_pick.prune(&alive);
+        self.port_pick.prune(&alive);
+        self.clamp_cursor();
+    }
+
+    pub fn tick(&mut self) {
+        let stuck = self.app_pick.check(ports::alive);
+        if !stuck.is_empty() {
+            let names: Vec<&str> =
+                self.apps.iter().filter(|a| stuck.contains(&a.pid)).map(|a| a.name.as_str()).collect();
+            self.set_toast(format!("{} still open (save dialog?)", names.join(", ")));
+        }
+        let stuck = self.port_pick.check(ports::alive);
         if !stuck.is_empty() {
             // One label per process, from its first port.
             let labels: Vec<String> = stuck
@@ -280,10 +308,6 @@ impl Model {
                 .collect();
             self.set_toast(format!("{} still running, try ⇧Q", labels.join(", ")));
         }
-        self.clamp_cursor();
-    }
-
-    pub fn tick(&mut self) {
         if self.toast.as_ref().is_some_and(|(_, t)| t.elapsed() >= TOAST_TTL) {
             self.toast = None;
         }
@@ -328,7 +352,7 @@ impl Model {
     pub fn toggle_cursor(&mut self) {
         let items = self.items();
         if let Some(label) = self.picker(self.tab).toggle_cursor(&items) {
-            self.set_toast(format!("{label} is protected"));
+            self.set_toast(format!("{label} can't be selected"));
         }
     }
 
@@ -587,14 +611,50 @@ mod tests {
         assert_eq!(m.app_pick.selected, HashSet::from([2]));
     }
 
+    fn overdue() -> Instant {
+        Instant::now() - QUIT_TIMEOUT - Duration::from_secs(1)
+    }
+
     #[test]
-    fn prune_reports_quits_past_the_timeout() {
+    fn check_marks_dead_pending_pid_gone_and_unselects_it() {
         let mut p = Picker::default();
-        p.pending.insert(1, Instant::now() - QUIT_TIMEOUT - Duration::from_secs(1));
+        p.pending.insert(1, Instant::now());
+        p.selected.insert(1);
+        assert!(p.check(|_| false).is_empty());
+        assert!(p.pending.is_empty() && p.selected.is_empty());
+        assert_eq!(p.gone, HashSet::from([1]));
+    }
+
+    #[test]
+    fn check_returns_live_overdue_pid_as_stuck_and_keeps_recent_pending() {
+        let mut p = Picker::default();
+        p.pending.insert(1, overdue());
         p.pending.insert(2, Instant::now());
-        p.pending.insert(3, Instant::now());
-        assert_eq!(p.prune(&HashSet::from([1, 2])), vec![1]);
-        assert_eq!(p.pending.keys().copied().collect::<Vec<_>>(), vec![2]); // 1 timed out, 3 is gone
+        assert_eq!(p.check(|_| true), vec![1]);
+        assert_eq!(p.pending.keys().copied().collect::<Vec<_>>(), vec![2]);
+        assert!(p.gone.is_empty());
+    }
+
+    #[test]
+    fn gone_rows_are_not_targets_or_selected_by_select_all() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.apply_refresh(sample());
+        m.app_pick.gone.insert(1);
+        m.toggle_all();
+        assert_eq!(target_pids(&m), vec![2, 7]);
+        m.app_pick.selected.insert(1);
+        assert_eq!(target_pids(&m), vec![2, 7]);
+    }
+
+    #[test]
+    fn refresh_clears_gone() {
+        let mut m = port_model();
+        m.apply_refresh(sample());
+        m.app_pick.gone.insert(1);
+        m.port_pick.gone.insert(10);
+        m.apply_refresh(sample());
+        m.apply_ports(vec![port(3000, 10, "/x/node")]);
+        assert!(m.app_pick.gone.is_empty() && m.port_pick.gone.is_empty());
     }
 
     fn port(port: u16, pid: i32, exe: &str) -> Port {

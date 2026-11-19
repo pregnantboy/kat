@@ -63,6 +63,11 @@ pub fn kill(pid: i32, force: bool) -> bool {
     unsafe { libc::kill(pid, if force { libc::SIGKILL } else { libc::SIGTERM }) == 0 }
 }
 
+/// Signal 0 only checks existence; EPERM means it exists but isn't ours.
+pub fn alive(pid: i32) -> bool {
+    pid > 0 && unsafe { libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
+}
+
 pub fn my_uid() -> u32 {
     unsafe { libc::getuid() }
 }
@@ -220,6 +225,12 @@ mod tests {
     fn kill_refuses_non_positive_pids() {
         assert!(!kill(0, false));
         assert!(!kill(-1, false));
+    }
+
+    #[test]
+    fn alive_checks_existence_without_signalling() {
+        assert!(alive(std::process::id() as i32));
+        assert!(!alive(0) && !alive(-1));
     }
 
     #[test]
