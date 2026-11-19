@@ -101,7 +101,7 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 2. The lists refresh only when you press `R` (and once at startup), so rows never move or disappear on their own. `R` refreshes apps and ports and toasts `↻ N apps · M ports`. On refresh, running apps keep their position with updated memory, quit apps disappear, and newly launched apps are added at the bottom; the list is sorted when it first loads and when `s` is pressed. Filtering and the background toggle hide rows without reordering them.
 3. After a quit, the targeted rows show `quitting…`. `killer` checks only those pids on every tick: when one exits, its row shows `gone`, is dimmed, and can't be selected until the next `R` removes it. The force-quit confirm re-checks its targets through the safety gate when you press `y`.
 4. If an app is still running 10 seconds after a polite quit, the toast says `<name> still open (save dialog?)`. The row goes back to normal so it can be force quit.
-5. If `quit` or `force_quit` returns false, the toast says `Couldn't quit <name>` and the list refreshes.
+5. If `quit` or `force_quit` returns false, the toast says `Couldn't quit <name>`. The row stays until the next `R`.
 
 ## Safety
 
