@@ -7,7 +7,6 @@ use ratatui::widgets::ListState;
 use crate::apps::{self, App, Kind};
 use crate::ports::{self, Port};
 
-const REFRESH: Duration = Duration::from_secs(2);
 const TOAST_TTL: Duration = Duration::from_secs(3);
 const QUIT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -155,7 +154,6 @@ pub struct Model {
     pub my_uid: u32,
     pub self_pid: i32,
     pub home: String,
-    refreshed: Instant,
 }
 
 impl Model {
@@ -178,7 +176,6 @@ impl Model {
             my_uid: ports::my_uid(),
             self_pid: std::process::id() as i32,
             home: std::env::var("HOME").unwrap_or_default(),
-            refreshed: Instant::now(),
         }
     }
 
@@ -259,7 +256,6 @@ impl Model {
             merged.extend(new); // what's left just launched
             self.apps = merged;
         }
-        self.refreshed = Instant::now();
         let alive: HashSet<i32> = self.apps.iter().map(|a| a.pid).collect();
         let stuck = self.app_pick.prune(&alive);
         if !stuck.is_empty() {
@@ -288,9 +284,6 @@ impl Model {
     }
 
     pub fn tick(&mut self) {
-        if self.refreshed.elapsed() >= REFRESH {
-            self.refresh();
-        }
         if self.toast.as_ref().is_some_and(|(_, t)| t.elapsed() >= TOAST_TTL) {
             self.toast = None;
         }
@@ -330,7 +323,6 @@ impl Model {
         } else {
             self.set_toast(format!("Couldn't {verb} {}", failed.join(", ")));
         }
-        self.refresh();
     }
 
     pub fn toggle_cursor(&mut self) {
@@ -407,6 +399,10 @@ impl Model {
                     Sort::Name => Sort::Memory,
                 };
                 sort_apps(&mut self.apps, self.sort);
+            }
+            KeyCode::Char('R') => {
+                self.refresh();
+                self.set_toast(format!("↻ {} apps · {} ports", self.apps.len(), self.ports.len()));
             }
             KeyCode::Char('?') => self.help = true,
             _ => {}
@@ -525,6 +521,15 @@ mod tests {
         next.insert(0, app(8, "Zed", "dev.zed", Kind::Regular, Some(5000)));
         m.apply_refresh(next);
         assert_eq!(pids(&m), vec![1, 4, 6, 3, 5, 7, 8]);
+    }
+
+    #[test]
+    fn tick_does_not_refresh_rows() {
+        let mut m = port_model();
+        m.apply_refresh(sample());
+        let (apps, ports) = (m.apps.clone(), m.ports.clone());
+        m.tick();
+        assert_eq!((m.apps, m.ports), (apps, ports));
     }
 
     #[test]

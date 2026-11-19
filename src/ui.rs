@@ -144,8 +144,8 @@ fn tab_title(m: &Model) -> Line<'static> {
 
 pub fn draw(f: &mut Frame, m: &mut Model) {
     let keys = match m.tab {
-        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  b background  s sort  ? help ",
-        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  ? help ",
+        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  b background  s sort  R refresh  ? help ",
+        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  R refresh  ? help ",
     };
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
@@ -247,6 +247,7 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
             ("/", "filter, esc clears"),
             ("b", "show background apps"),
             ("s", "sort apps by memory / name"),
+            ("R", "refresh apps and ports"),
             ("esc  ctrl-c", "exit"),
         ];
         let lines = keys
