@@ -368,7 +368,14 @@ impl Model {
         }
         if let Some((tab, targets)) = self.confirm.take() {
             if key.code == KeyCode::Char('y') {
-                self.send(tab, targets, true);
+                // The modal may have sat open a while: re-check against the current rows.
+                let pids: HashSet<i32> = targets.iter().map(|t| t.pid).collect();
+                match pick_targets(&self.items(), &pids, None) {
+                    t if t.is_empty() => {
+                        self.set_toast(if tab == Tab::Apps { "Nothing to quit" } else { "Nothing to stop" })
+                    }
+                    t => self.send(tab, t, true),
+                }
             }
             return true;
         }
@@ -554,6 +561,16 @@ mod tests {
         let (apps, ports) = (m.apps.clone(), m.ports.clone());
         m.tick();
         assert_eq!((m.apps, m.ports), (apps, ports));
+    }
+
+    #[test]
+    fn confirm_y_drops_targets_no_longer_in_rows() {
+        let mut m = port_model();
+        m.confirm = Some((Tab::Ports, vec![item(999999, false)]));
+        m.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        assert!(m.confirm.is_none());
+        assert_eq!(m.toast.as_ref().map(|t| t.0.as_str()), Some("Nothing to stop"));
+        assert!(m.port_pick.pending.is_empty());
     }
 
     #[test]
