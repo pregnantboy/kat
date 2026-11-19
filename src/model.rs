@@ -177,7 +177,9 @@ impl Model {
     }
 
     pub fn targets(&self) -> Vec<App> {
-        quit_targets(&self.apps, &self.selected, self.cursor_pid(), &self.excluded, self.terminal_pid)
+        // Hidden rows stay selected but are never acted on.
+        let shown: Vec<App> = self.visible().into_iter().cloned().collect();
+        quit_targets(&shown, &self.selected, self.cursor_pid(), &self.excluded, self.terminal_pid)
     }
 
     fn send_quit(&mut self, targets: Vec<App>, force: bool) {
@@ -414,6 +416,18 @@ mod tests {
         assert_eq!(pids, vec![1, 2, 5, 7]);
         m.toggle_all();
         assert!(m.selected.is_empty());
+    }
+
+    #[test]
+    fn targets_ignore_selected_apps_hidden_by_filter() {
+        let mut m = Model::new(excluded(), TERMINAL);
+        m.show_bg = true;
+        m.apply_refresh(sample());
+        m.toggle_all();
+        m.filter = "safari".into();
+        assert_eq!(m.targets().iter().map(|a| a.pid).collect::<Vec<_>>(), vec![2]);
+        m.filter.clear();
+        assert_eq!(m.targets().len(), 4);
     }
 
     #[test]

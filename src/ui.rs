@@ -113,15 +113,11 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
         Line::from(" / filter").dim()
     };
     f.render_widget(Paragraph::new(filter), header);
-    let total: u64 = m
-        .apps
-        .iter()
-        .filter(|a| m.selected.contains(&a.pid))
-        .filter_map(|a| a.memory_bytes)
-        .sum();
+    let picked: Vec<&App> = m.visible().into_iter().filter(|a| m.selected.contains(&a.pid)).collect();
+    let total: u64 = picked.iter().filter_map(|a| a.memory_bytes).sum();
     let sort = if m.sort == Sort::Memory { "by memory" } else { "by name" };
     let bg = if m.show_bg { " · background on" } else { "" };
-    let summary = format!("{} selected · {} · {sort}{bg} ", m.selected.len(), fmt_bytes(total));
+    let summary = format!("{} selected · {} · {sort}{bg} ", picked.len(), fmt_bytes(total));
     f.render_widget(Paragraph::new(summary).alignment(Alignment::Right), header);
 
     let rule = Paragraph::new("─".repeat(inner.width as usize)).dim();
