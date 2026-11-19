@@ -45,7 +45,7 @@ The only file that calls AppKit or `libc`.
 
 ### `src/config.rs`
 
-Reads `~/.config/killer/exclude`, a plain text file with one bundle ID per line. Blank lines and lines starting with `#` are ignored. Entries in the file are added to the defaults. If the file is missing, only the defaults apply. If it can't be read, the defaults apply and the UI shows a toast. Default exclusions: `com.apple.finder`.
+Reads `~/.config/killer/exclude`, a plain text file with one bundle ID per line. Anything after a `#` is a comment, and blank lines are ignored. Bundle IDs match case-insensitively, the way macOS treats them. Entries in the file are added to the defaults. If the file is missing, only the defaults apply. If it can't be read, the defaults apply and the UI shows a toast. Default exclusions: `com.apple.finder`.
 
 ### `src/model.rs` and `src/ui.rs`
 
@@ -76,7 +76,7 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 - Memory bars scale to the largest visible app.
 - The header shows the count and total memory of the selected apps.
 - The toast line shows the result of the last action and clears after 3 seconds.
-- Force quit opens a centered modal: `Force quit 3 apps? Unsaved work is lost.`, then the app names, then `y force quit   any other key cancels`. The count uses `1 app` / `N apps`.
+- Force quit opens a centered modal: `Force quit 3 apps? Unsaved work is lost.`, then the app names one per line (at most 8, then `+N more`), never wider than the screen, then `y force quit   any other key cancels`. The count uses `1 app` / `N apps`.
 - Colors come from the terminal's 16 ANSI colors, so the UI follows the terminal's light or dark theme.
 
 ## Keys
@@ -86,25 +86,25 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 | `↑` `↓` / `k` `j` | Move cursor |
 | `space` | Toggle selection on the cursor row |
 | `a` | Select all visible, quittable apps. Press again to clear |
-| `⏎` | Quit the selection, or the cursor row if nothing is selected |
+| `⏎` | Quit the visible selected apps, or the cursor row if nothing is selected. Selected apps hidden by the filter or background toggle are not quit |
 | `Q` | Force quit the same set, after confirmation |
 | `/` | Start filtering by name. `esc` clears the filter |
 | `b` | Toggle background apps |
-| `s` | Toggle sort between memory and name |
+| `s` | Toggle sort between memory and name, and re-sort the list |
 | `?` | Show the key list |
 | `esc` / `ctrl-c` | Exit (when no filter or modal is active) |
 
 ## Behaviour
 
 1. The loop polls for key events every 250ms.
-2. The app list refreshes every 2 seconds and right after any quit. Selections are kept by pid across refreshes. A selected pid that no longer exists is dropped.
+2. The app list refreshes every 2 seconds and right after any quit. Row order stays fixed between refreshes so the cursor never lands on a different app: the list is sorted when it first loads and when `s` is pressed, running apps keep their position with updated memory, quit apps disappear, and newly launched apps are added at the bottom. Filtering and the background toggle hide rows without reordering them. Selections are kept by pid across refreshes. A selected pid that no longer exists is dropped.
 3. After a quit, the targeted rows show `quitting…`. Apps that exit disappear on the next refresh.
 4. If an app is still running 10 seconds after a polite quit, the toast says `<name> still open (save dialog?)`. The row goes back to normal so it can be force quit.
 5. If `quit` or `force_quit` returns false, the toast says `Couldn't quit <name>` and the list refreshes.
 
 ## Safety
 
-- The app that is frontmost when `killer` starts is treated as the launching terminal and is always excluded.
+- The app that is frontmost when `killer` starts is treated as the launching terminal and is always excluded. If it can't be detected, a toast says `Couldn't detect this terminal, so it isn't protected`.
 - Background apps (menu bar or helper) whose bundle ID starts with `com.apple.` or is empty are always protected. macOS reports `loginwindow`, Dock, WindowManager, and SystemUIServer as menu bar apps, and quitting `loginwindow` logs the user out. These rows show a `system` badge.
 - Every quit path gets its targets from one function, `quit_targets`, which removes excluded apps and the launching terminal. No key handler calls `apps::quit` or `apps::force_quit` with a pid that didn't come from `quit_targets`.
 - Force quit always asks for confirmation.
