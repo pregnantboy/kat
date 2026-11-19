@@ -150,8 +150,8 @@ fn tab_title(m: &Model) -> Line<'static> {
 
 pub fn draw(f: &mut Frame, m: &mut Model) {
     let keys = match m.tab {
-        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  b background  s sort  r refresh  ? help ",
-        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  r refresh  h locked  ? help ",
+        Tab::Apps => " tab ports  space select  a all  ⏎ quit  ⇧Q force  / filter  h background  s sort  r refresh  ? help ",
+        Tab::Ports => " tab apps  space select  a all  ⏎ stop  ⇧Q kill  / filter  h locked  r refresh  ? help ",
     };
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
@@ -183,7 +183,14 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
                 m.visible().into_iter().filter(|a| m.app_pick.selected.contains(&a.pid)).collect();
             let total: u64 = picked.iter().filter_map(|a| a.memory_bytes).sum();
             let sort = if m.sort == Sort::Memory { "by memory" } else { "by name" };
-            let bg = if m.show_bg { " · background on" } else { "" };
+            let hidden = m.background_hidden();
+            let bg = if m.show_bg {
+                " · background shown".to_string()
+            } else if hidden > 0 {
+                format!(" · {hidden} background hidden")
+            } else {
+                String::new()
+            };
             format!("{} selected · {} · {sort}{bg} ", picked.len(), fmt_bytes(total))
         }
         Tab::Ports => {
@@ -259,10 +266,9 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
             ("⏎", "quit or stop selection, or cursor row"),
             ("Q", "force quit or kill (asks first)"),
             ("/", "filter, esc clears"),
-            ("b", "show background apps"),
             ("s", "sort apps by memory / name"),
             ("r", "refresh apps and ports"),
-            ("h", "show locked ports"),
+            ("h", "show background apps / locked ports"),
             ("esc  ctrl-c", "exit"),
         ];
         let lines = keys

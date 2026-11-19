@@ -206,6 +206,14 @@ impl Model {
             .collect()
     }
 
+    /// Background apps the text filter lets through but `show_bg` hides.
+    pub fn background_hidden(&self) -> usize {
+        if self.show_bg {
+            return 0;
+        }
+        visible(&self.apps, true, &self.filter).len() - self.visible().len()
+    }
+
     /// Locked ports the text filter lets through but `show_locked` hides.
     pub fn locked_hidden(&self) -> usize {
         if self.show_locked {
@@ -440,7 +448,6 @@ impl Model {
                 t => self.confirm = Some((tab, t)),
             },
             KeyCode::Char('/') => self.filtering = true,
-            KeyCode::Char('b') if tab == Tab::Apps => self.show_bg = !self.show_bg,
             KeyCode::Char('s') if tab == Tab::Apps => {
                 self.sort = match self.sort {
                     Sort::Memory => Sort::Name,
@@ -448,7 +455,11 @@ impl Model {
                 };
                 sort_apps(&mut self.apps, self.sort);
             }
-            KeyCode::Char('h') if tab == Tab::Ports => self.show_locked = !self.show_locked,
+            // `h` shows what each tab hides by default: background apps, or locked ports.
+            KeyCode::Char('h') => match tab {
+                Tab::Apps => self.show_bg = !self.show_bg,
+                Tab::Ports => self.show_locked = !self.show_locked,
+            },
             KeyCode::Char('r') => {
                 self.refresh();
                 self.set_toast(format!("↻ {} apps · {} ports", self.apps.len(), self.ports.len()));
@@ -748,10 +759,15 @@ mod tests {
     }
 
     #[test]
-    fn h_does_nothing_on_apps_tab() {
+    fn h_toggles_background_apps_on_apps_tab() {
         let mut m = port_model();
         m.tab = Tab::Apps;
+        m.apply_refresh(sample());
+        assert_eq!(m.background_hidden(), 2); // Spotify, loginwindow
+        m.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+        assert!(!m.show_bg, "b no longer toggles anything");
         m.on_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
-        assert!(!m.show_locked);
+        assert!(m.show_bg && !m.show_locked);
+        assert_eq!(m.background_hidden(), 0);
     }
 }

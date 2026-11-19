@@ -89,7 +89,7 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 | `⏎` | Quit the visible selected apps, or the cursor row if nothing is selected. Selected apps hidden by the filter or background toggle are not quit |
 | `Q` | Force quit the same set, after confirmation |
 | `/` | Start filtering by name. `esc` clears the filter |
-| `b` | Toggle background apps |
+| `h` | Show or hide background apps. The header shows `N background hidden` or `background shown` |
 | `s` | Toggle sort between memory and name, and re-sort the list |
 | `r` | Refresh apps and ports |
 | `?` | Show the key list |

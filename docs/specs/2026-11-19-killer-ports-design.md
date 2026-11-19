@@ -58,7 +58,7 @@ Protected rows are dimmed, show a lock, and can't be selected. They are hidden b
 - Both tabs turn their visible rows into `Item { pid, label, protected }`. One pure function, `pick_targets(items, selected, cursor_pid)`, picks what to act on: the visible selected items, or the cursor row if nothing is selected, minus protected items, one per pid. It replaces `quit_targets` and is the only source of pids for `apps::quit`, `apps::force_quit`, and `ports::kill`.
 - Selection is by pid. Selecting one row of a process that holds several ports marks all its rows, because a stop ends the whole process.
 - Each tab has its own cursor and selection. Switching tabs clears the filter.
-- On the Ports tab, the filter matches the port number (with or without a leading `:`), the name, or the project. `b` and `s` do nothing there.
+- On the Ports tab, the filter matches the port number (with or without a leading `:`), the name, or the project. `s` does nothing there. `h` shows or hides locked ports, the same key that shows background apps on the Apps tab.
 - Port rows are sorted by port number each time you press `r`. Nothing refreshes automatically, so rows only move when you ask.
 
 ## Screen
@@ -79,7 +79,7 @@ Protected rows are dimmed, show a lock, and can't be selected. They are hidden b
 - The active tab is bold and cyan in the title. The other is dim.
 - Columns: port, name, project (or the protection badge for protected rows), process name (dim), pid (dim).
 - The header shows the number of selected visible rows and the total number of rows on the Ports tab.
-- The footer and help list `tab`, `r`, and `h`. On the Ports tab the footer says `⏎ stop  ⇧Q kill` and leaves out `b` and `s`.
+- The footer and help list `tab`, `r`, and `h`. On the Ports tab the footer says `⏎ stop  ⇧Q kill` and leaves out `s`.
 
 ## Behaviour
 
