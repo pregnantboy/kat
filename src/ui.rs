@@ -146,7 +146,7 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
     if let Some(targets) = &m.confirm {
         let names: Vec<&str> = targets.iter().map(|a| a.name.as_str()).collect();
         modal(f, "Force quit", Color::Red, vec![
-            Line::from(format!("Force quit {} app(s)? Unsaved work is lost.", targets.len())),
+            Line::from(format!("Force quit {} {}? Unsaved work is lost.", targets.len(), if targets.len() == 1 { "app" } else { "apps" })),
             Line::from(names.join(", ")).dim(),
             Line::from(""),
             Line::from(vec![Span::raw("y").bold().fg(Color::Red), Span::raw(" force quit   any other key cancels")]),
