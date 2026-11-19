@@ -70,13 +70,13 @@ State: the app rows, selected pids, cursor, filter text, the background toggle, 
 ╰─ space select  a all  ⏎ quit  ⇧Q force  b background  ? help ─╯
 ```
 
-- `●` selected, `○` not selected. The cursor row has an accent background.
+- `●` selected, `○` not selected. The cursor row is drawn in reverse video, so it stays readable in any terminal theme.
 - Excluded rows are dimmed, show a lock, and can't be selected.
 - Background apps show a grey `menu bar` or `helper` badge and appear only when the background toggle is on.
 - Memory bars scale to the largest visible app.
 - The header shows the count and total memory of the selected apps.
 - The toast line shows the result of the last action and clears after 3 seconds.
-- Force quit opens a centered modal: `Force quit 3 apps? Unsaved work is lost. y / n`.
+- Force quit opens a centered modal: `Force quit 3 apps? Unsaved work is lost.`, then the app names, then `y force quit   any other key cancels`. The count uses `1 app` / `N apps`.
 - Colors come from the terminal's 16 ANSI colors, so the UI follows the terminal's light or dark theme.
 
 ## Keys
