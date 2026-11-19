@@ -13,11 +13,13 @@ use model::Model;
 fn main() -> std::io::Result<()> {
     let (excluded, warning) = config::load();
     // Read before the UI starts, while the terminal that launched us is still frontmost.
-    let terminal_pid = apps::frontmost_pid().unwrap_or(-1);
-    let mut m = Model::new(excluded, terminal_pid);
+    let terminal_pid = apps::frontmost_pid();
+    let mut m = Model::new(excluded, terminal_pid.unwrap_or(-1));
     m.refresh();
-    if let Some(w) = warning {
-        m.set_toast(w);
+    let missing = terminal_pid.is_none().then(|| "Couldn't detect this terminal, so it isn't protected".to_string());
+    let toast: Vec<String> = warning.into_iter().chain(missing).collect();
+    if !toast.is_empty() {
+        m.set_toast(toast.join(" · "));
     }
     ratatui::run(|terminal| run(terminal, &mut m))
 }
