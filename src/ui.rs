@@ -69,6 +69,7 @@ fn row(m: &Model, a: &App, max_mem: u64) -> ListItem<'static> {
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let (width, height) = (width.min(area.width), height.min(area.height));
     let [area] = Layout::horizontal([Constraint::Length(width)]).flex(Flex::Center).areas(area);
     let [area] = Layout::vertical([Constraint::Length(height)]).flex(Flex::Center).areas(area);
     area
@@ -140,13 +141,19 @@ pub fn draw(f: &mut Frame, m: &mut Model) {
     }
 
     if let Some(targets) = &m.confirm {
-        let names: Vec<&str> = targets.iter().map(|a| a.name.as_str()).collect();
-        modal(f, "Force quit", Color::Red, vec![
-            Line::from(format!("Force quit {} {}? Unsaved work is lost.", targets.len(), if targets.len() == 1 { "app" } else { "apps" })),
-            Line::from(names.join(", ")).dim(),
-            Line::from(""),
-            Line::from(vec![Span::raw("y").bold().fg(Color::Red), Span::raw(" force quit   any other key cancels")]),
-        ]);
+        const SHOWN: usize = 8;
+        let mut lines = vec![Line::from(format!(
+            "Force quit {} {}? Unsaved work is lost.",
+            targets.len(),
+            if targets.len() == 1 { "app" } else { "apps" }
+        ))];
+        lines.extend(targets.iter().take(SHOWN).map(|a| Line::from(format!("  {}", a.name)).dim()));
+        if targets.len() > SHOWN {
+            lines.push(Line::from(format!("  +{} more", targets.len() - SHOWN)).dim());
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![Span::raw("y").bold().fg(Color::Red), Span::raw(" force quit   any other key cancels")]));
+        modal(f, "Force quit", Color::Red, lines);
     } else if m.help {
         let keys = [
             ("↑ ↓  k j", "move"),
@@ -183,5 +190,29 @@ mod tests {
         assert_eq!(bar(0.5, 4), "██");
         assert_eq!(bar(0.0, 4), "");
         assert_eq!(bar(0.125, 4), "▌"); // 4 of 32 eighths: half a cell
+    }
+
+    #[test]
+    fn force_quit_modal_lists_eight_apps_then_a_count() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet"];
+        let apps = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| App {
+                name: n.to_string(),
+                bundle_id: format!("com.test.{n}"),
+                pid: i as i32 + 100,
+                kind: Kind::Regular,
+                memory_bytes: None,
+            })
+            .collect();
+        let mut m = Model::new(vec![], -1);
+        m.confirm = Some(apps);
+        let mut term = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        term.draw(|f| draw(f, &mut m)).unwrap();
+        let text: String = term.backend().buffer().content().iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("Alpha") && text.contains("Hotel") && text.contains("+2 more"));
+        assert!(!text.contains("India"));
     }
 }
