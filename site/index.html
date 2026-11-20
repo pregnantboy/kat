@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="kat is a macOS terminal app for quitting apps and stopping whatever is on a port. It has a kitten.">
+<title>kat</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=JetBrains+Mono:wght@400;700&family=Instrument+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: white page, one big tilted terminal you can actually drive, sticker chips, key caps. */
+:root {
+  --bg: #FFFFFF;
+  --fg: #2A1A12;          /* kitten outline brown, darkened for text */
+  --muted: #6E5446;
+  --ginger: #F4A454;      /* fur */
+  --ginger-ink: #B85E17;  /* fur, dark enough for text on white */
+  --pink: #E86080;        /* nose */
+  --blush: #FFE3E3;
+  --line: #EADFD6;
+  --term-bg: #15110F;
+  --term-fg: #EDE3DA;
+  --term-dim: #8A7B70;
+  --term-cyan: #4FD6E8;   /* the app's real ACCENT */
+  --term-yellow: #F2C94C;
+  --font-display: "Pixelify Sans", "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-body: "Instrument Sans", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17110E; --fg: #F6E9DC; --muted: #BFA898; --ginger-ink: #F4A454;
+    --blush: #3A2420; --line: #33261F; --term-bg: #0C0907; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17110E; --fg: #F6E9DC; --muted: #BFA898; --ginger-ink: #F4A454;
+  --blush: #3A2420; --line: #33261F; --term-bg: #0C0907; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+img { max-width: 100%; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.55 var(--font-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
+
+/* nav */
+nav .wrap { display: flex; align-items: center; justify-content: space-between; padding-block: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 26px var(--font-display); text-decoration: none; }
+.brand canvas { width: 38px; height: 24px; image-rendering: pixelated; }
+nav .links { display: flex; gap: 20px; font: 14px var(--font-mono); }
+nav .links a { text-decoration: none; color: var(--muted); }
+nav .links a:hover { color: var(--fg); }
+
+/* hero */
+.hero { overflow-x: clip; min-height: calc(100svh - 82px); display: flex; align-items: center; }
+.hero .wrap { width: 100%; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: center; padding-block: 40px 88px; }
+.eyebrow { font: 13px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ginger-ink); }
+h1 { font: 700 clamp(38px, 4.6vw, 60px)/1 var(--font-display); letter-spacing: -0.02em; margin: 14px 0 22px; white-space: nowrap; }
+h1 .dust { color: var(--ginger); }
+.lede { color: var(--muted); max-width: 30em; margin: 0 0 28px; }
+.install { display: inline-flex; align-items: center; gap: 12px; background: var(--term-bg); color: var(--term-fg); font: 15px var(--font-mono); padding: 12px 12px 12px 18px; border-radius: 10px; max-width: 100%; }
+.install code { white-space: nowrap; overflow-x: auto; min-width: 0; }
+.install .p { color: var(--ginger); }
+.install button { font: 600 13px var(--font-mono); background: var(--ginger); color: #2A1A12; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; flex-shrink: 0; }
+.stickers { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.sticker { font: 13px var(--font-mono); padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--fg); background: var(--bg); box-shadow: 3px 3px 0 var(--fg); }
+.sticker:nth-child(1) { transform: rotate(-3deg); background: var(--blush); }
+.sticker:nth-child(2) { transform: rotate(2deg); }
+.sticker:nth-child(3) { transform: rotate(-1deg); }
+
+/* the terminal */
+.stage { position: relative; min-width: 0; }
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 14px; box-shadow: 10px 10px 0 var(--ginger); transform: rotate(1.2deg); font: 14px/1.2 var(--font-mono); overflow: hidden; }
+.term:focus-visible { outline: 3px solid var(--pink); outline-offset: 6px; }
+.chrome { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid #2B231E; }
+.chrome i { width: 11px; height: 11px; border-radius: 50%; background: #3A302A; }
+.chrome i:nth-child(1) { background: #FF6159; } .chrome i:nth-child(2) { background: #FFBD2E; } .chrome i:nth-child(3) { background: #28C941; }
+.chrome span { margin-left: 8px; color: var(--term-dim); font-size: 12px; }
+.screen { padding: 14px; overflow-x: auto; }
+.box { position: relative; border: 1px solid #4A3E36; border-radius: 9px; padding: 10px 6px 12px; min-width: 60ch; }
+.box .t { position: absolute; top: -0.65em; left: 14px; background: var(--term-bg); padding: 0 6px; white-space: pre; }
+.box .b { position: absolute; bottom: -0.65em; left: 14px; right: 14px; background: var(--term-bg); padding: 0 6px; white-space: pre; color: var(--term-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; width: max-content; max-width: calc(100% - 28px); }
+.on { color: var(--term-cyan); font-weight: 700; } .dim { color: var(--term-dim); } .yel { color: var(--term-yellow); } .cy { color: var(--term-cyan); }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; height: 7.2em; padding: 0 4px; }
+.head .l, .head .r { white-space: pre; }
+.head canvas { width: 19ch; height: 7.2em; image-rendering: pixelated; flex-shrink: 0; }
+.head .meta { display: flex; flex-direction: column; justify-content: space-between; height: 100%; align-items: flex-end; min-width: 0; }
+.rule { color: #3A302A; white-space: pre; overflow: hidden; padding: 0 4px; }
+.rows { min-height: 8.4em; }
+.row { white-space: pre; padding: 0 4px; cursor: pointer; border-radius: 3px; }
+.row.cur { background: #2A2320; }
+.row.cur::before { content: ""; }
+.toast { white-space: pre; padding: 4px 4px 0; min-height: 1.4em; color: var(--term-yellow); }
+.hint { margin-top: 26px; text-align: center; font: 13px var(--font-mono); color: var(--muted); transform: rotate(1.2deg); }
+.hint kbd { font: inherit; }
+.pad { display: none; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+.pad button { font: 600 13px var(--font-mono); padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); box-shadow: 2px 2px 0 var(--fg); cursor: pointer; }
+.pad button:active { transform: translate(2px, 2px); box-shadow: none; }
+
+/* sections */
+section { padding-block: 72px; border-top: 1px solid var(--line); }
+h2 { font: 700 clamp(32px, 4vw, 48px)/1 var(--font-display); margin: 0 0 14px; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { color: var(--muted); max-width: 34em; margin: 0 0 40px; }
+.tabs3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
+.tabs3 h3 { font: 700 15px var(--font-mono); margin: 14px 0 8px; }
+.tabs3 p { margin: 0; color: var(--muted); font-size: 16px; }
+.glyph { font: 700 22px var(--font-mono); color: var(--ginger-ink); }
+.mini { background: var(--term-bg); color: var(--term-fg); font: 12.5px/1.45 var(--font-mono); border-radius: 10px; padding: 12px 14px; margin-top: 16px; white-space: pre; overflow-x: auto; }
+
+/* dust strip */
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.frame { background: var(--term-bg); color: var(--term-fg); border-radius: 10px; padding: 14px; font: 13px var(--font-mono); white-space: pre; overflow-x: auto; }
+.frame small { display: block; color: var(--term-dim); font-size: 11px; margin-bottom: 8px; letter-spacing: .06em; text-transform: uppercase; }
+
+/* keys */
+.keys { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.key { display: flex; align-items: center; gap: 12px; font-size: 16px; }
+kbd.cap { font: 700 14px var(--font-mono); min-width: 40px; text-align: center; padding: 7px 10px; border: 1.5px solid var(--fg); border-bottom-width: 4px; border-radius: 8px; background: var(--bg); }
+
+/* install */
+.end { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: end; }
+.end canvas { width: 190px; height: 120px; image-rendering: pixelated; }
+footer { padding-block: 28px 48px; color: var(--muted); font: 13px var(--font-mono); }
+
+@media (max-width: 860px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-bottom: 56px; }
+  .tabs3, .strip { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .term { font-size: 12px; transform: none; box-shadow: 6px 6px 0 var(--ginger); }
+  .hint { transform: none; }
+  .pad { display: flex; }
+  .end { grid-template-columns: minmax(0, 1fr); }
+  .end canvas { width: 133px; height: 84px; }
+  nav .links a.hide-s { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="brand" href="#top"><canvas class="kit" width="19" height="12" aria-hidden="true"></canvas>kat</a>
+  <div class="links">
+    <a class="hide-s" href="#what">what it does</a>
+    <a href="https://github.com/pregnantboy/kat">github ↗</a>
+  </div>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <div>
+    <div class="eyebrow">a terminal app for macOS</div>
+    <h1>Quit the app<br><span class="dust">Pet&nbsp;the&nbsp;kat</span></h1>
+    <p class="lede">kat lists what's running and what's listening on a port. Pick what you're done with, press ⏎, and a small ginger kitten swats it away.</p>
+    <div class="install"><code><span class="p">$</span> brew install pregnantboy/tap/kat</code><button type="button" id="copy">copy</button></div>
+    <div class="stickers">
+      <span class="sticker">has a kitten</span>
+      <span class="sticker">Rust + Ratatui</span>
+      <span class="sticker">arm64 &amp; x86_64</span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="term" id="term" tabindex="0" role="application" aria-label="kat demo. Arrow keys move, space selects, enter quits, tab switches lists, r refreshes.">
+      <div class="chrome"><i></i><i></i><i></i><span>kat — iTerm2</span></div>
+      <div class="screen">
+        <div class="box">
+          <div class="t" id="title"></div>
+          <div class="head">
+            <div class="meta" style="align-items:flex-start"><div class="l" id="filter"><span class="dim"> / filter</span></div></div>
+            <div class="meta"><canvas class="kit" id="termkit" width="19" height="12" aria-hidden="true"></canvas></div>
+          </div>
+          <div class="head" style="height:auto"><span></span><div class="r dim" id="summary"></div></div>
+          <div class="rule" id="rule"></div>
+          <div class="rows" id="rows"></div>
+          <div class="rule" id="rule2"></div>
+          <div class="toast" id="toast"></div>
+          <div class="b" id="keyline"></div>
+        </div>
+      </div>
+    </div>
+    <div class="hint" id="hint">↑ click the terminal, then try <kbd>↓</kbd> <kbd>space</kbd> <kbd>⏎</kbd> <kbd>tab</kbd></div>
+    <div class="pad" aria-label="demo controls">
+      <button type="button" data-k="ArrowUp">↑</button>
+      <button type="button" data-k="ArrowDown">↓</button>
+      <button type="button" data-k=" ">space</button>
+      <button type="button" data-k="Enter">⏎ quit</button>
+      <button type="button" data-k="Tab">tab</button>
+      <button type="button" data-k="r">r</button>
+    </div>
+  </div>
+</div></header>
+
+<section id="what"><div class="wrap">
+  <h2>Apps and ports</h2>
+  <p class="sub">kat opens on your apps. Press tab for the ports. Both work the same way: move, select, press ⏎.</p>
+  <div class="tabs3">
+    <div>
+      <div class="glyph">Apps</div>
+      <h3>Clear out the Dock</h3>
+      <p>kat asks each app to quit politely, so it can still offer to save. Apps are sorted by memory, using the same number Activity Monitor shows.</p>
+      <div class="mini"><span class="cy">●</span> Slack        <span class="cy">██████▍</span>  1.4 GB
+<span class="cy">●</span> Google Chrome <span class="cy">█████▏</span>   1.1 GB
+<span class="dim">○</span> Spotify      <span class="cy">██▎</span>     512 MB</div>
+    </div>
+    <div>
+      <div class="glyph">:3000</div>
+      <h3>Find whatever's on that port</h3>
+      <p>The Ports tab shows every listening socket, the project folder it was started from, and the process behind it. No more <code>lsof -i</code> and copying pids around.</p>
+      <div class="mini"><span class="cy">●</span> :3000  next dev   ~/code/shop
+<span class="dim">○</span> :5173  vite       ~/code/blog
+<span class="dim">○</span> :8765  http.server ~/Downloads</div>
+    </div>
+    <div>
+      <div class="glyph">locked</div>
+      <h3>Some things stay put</h3>
+      <p>Finder, the terminal you launched kat from, and macOS background apps like loginwindow are locked. So are Docker and OrbStack ports. Add your own with one bundle ID per line.</p>
+      <div class="mini"><span class="dim"># ~/.config/kat/exclude</span>
+com.1password.1password
+com.apple.Music</div>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap end">
+  <div>
+    <h2>Get kat</h2>
+    <p class="sub" style="margin-bottom:24px">macOS only, Apple silicon and Intel. Update with <code>brew upgrade</code>. In iTerm2 and WezTerm, rows show real app icons.</p>
+    <div class="install"><code><span class="p">$</span> brew install pregnantboy/tap/kat</code><button type="button" class="copy2">copy</button></div>
+  </div>
+  <canvas class="kit" id="bigkit" width="19" height="12" aria-hidden="true"></canvas>
+</div></section>
+
+<footer><div class="wrap">kat · made with a cat on the keyboard · <a href="https://github.com/pregnantboy/kat">github.com/pregnantboy/kat</a></div></footer>
+
+<script>
+// Sprites and colours copied from src/kitten.rs.
+const S = {
+  idle: [".O..........O......",".OO........OO......",".OPOOOOOOOOPO......",".OFFFFFFFFFFO......","OFFEHFFFFEHFFO.....","OFFEEFFFFEEFFO.....","OFFEEFFFFEEFFO.....","OBBFOFNNFOFBBO.....",".OFFFOFFOFFFO......","..OOFFFFFFOO.......",".OFWWFFFFWWFO......","..OOOOOOOOOO......."],
+  breathe: ["...................",".O..........O......",".OO........OO......",".OPOOOOOOOOPO......",".OFFFFFFFFFFO......","OFFEHFFFFEHFFO.....","OFFEEFFFFEEFFO.....","OFFEEFFFFEEFFO.....","OBBFOFNNFOFBBO.....",".OFFFOFFOFFFO......",".OFWWFFFFWWFO......","..OOOOOOOOOO......."],
+  squint: [".O..........O......",".OO........OO......",".OPOOOOOOOOPO......",".OFFFFFFFFFFO......","OFFFFFFFFFFFFO.....","OFFEEFFFFEEFFO.....","OFEFFEFFEFFEFO.....","OBBFOFNNFOFBBO.....",".OFFFOFFOFFFO......","..OOFFFFFFOO.......",".OFWWFFFFWWFO......","..OOOOOOOOOO......."],
+  pawUp: [".O..........O......",".OO........OO......",".OPOOOOOOOOPO.OO...",".OFFFFFFFFFFOOWWO..","OFFEHFFFFEHFFOWWO..","OFFEEFFFFEEFFOOFO..","OFFEEFFFFEEFFOOFO..","OBBFOFNNFOFBBOOFO..",".OFFFOFFOFFFOOFO...","..OOFFFFFFOOOFO....",".OFWWFFFFFFFO......","..OOOOOOOOOO......."],
+  swipe: [".O..........O......",".OO........OO......",".OPOOOOOOOOPO......",".OFFFFFFFFFFO......","OFFEHFFFFEHFFO.....","OFFEEFFFFEEFFO.....","OFFEEFFFFEEFFO.....","OBBFOFNNFOFBBO.OOO.",".OFFFOFFOFFFOOFFWWO","..OOFFFFFFOOOFFWWO.",".OFWWFFFFFFFO..OO..","..OOOOOOOOOO......."],
+};
+const C = { O: "#5C3422", F: "#F4A454", W: "#FFF6E8", E: "#281C1C", H: "#FFFFFF", P: "#FF9EB2", B: "#FFBABA", N: "#E86080" };
+
+const born = performance.now();
+let swatAt = null, happyAt = null;
+const since = t => t == null ? null : performance.now() - t;
+
+// Same timing as kitten::pose.
+function pose() {
+  const age = performance.now() - born, s = since(swatAt), h = since(happyAt), bat = age % 900;
+  if (s != null && s < 150) return "pawUp";
+  if (s != null && s < 400) return "swipe";
+  if (h != null && h < 900) return "squint";
+  if (quitting() && bat < 150) return "pawUp";
+  if (quitting() && bat < 400) return "swipe";
+  if (quitting()) return "idle";
+  if (age % 4000 >= 3700) return "squint";
+  return Math.floor(age / 800) % 2 ? "breathe" : "idle";
+}
+function paint(cv, sprite) {
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, 19, 12);
+  sprite.forEach((row, y) => [...row].forEach((c, x) => { if (C[c]) { g.fillStyle = C[c]; g.fillRect(x, y, 1, 1); } }));
+}
+
+// Same dust as kitten::puff.
+function puff(text, age) {
+  if (age >= 450) return null;
+  const stage = Math.floor(age / 150);
+  return [...text].map((c, i) => c === " " || (i * 7 + stage * 3) % (stage + 2) !== 0 ? " " : ["∘", "°", "·"][(i + stage) % 3]).join("");
+}
+
+// Demo data. Pids are made up.
+const APPS = () => [
+  { pid: 811, name: "Slack", mem: 1.4e9, kind: "" },
+  { pid: 402, name: "Google Chrome", mem: 1.1e9, kind: "" },
+  { pid: 977, name: "Xcode", mem: 860e6, kind: "" },
+  { pid: 1203, name: "Spotify", mem: 512e6, kind: "" },
+  { pid: 330, name: "zoom.us", mem: 344e6, kind: "" },
+  { pid: 88, name: "iTerm2", mem: 290e6, kind: "this terminal", lock: true },
+  { pid: 61, name: "Finder", mem: 120e6, kind: "excluded", lock: true },
+];
+const PORTS = () => [
+  { pid: 48211, port: 3000, name: "next dev", dir: "~/code/shop", proc: "node" },
+  { pid: 51022, port: 5173, name: "vite", dir: "~/code/blog", proc: "node" },
+  { pid: 50110, port: 8765, name: "http.server", dir: "~/Downloads", proc: "python3" },
+  { pid: 701, port: 5432, name: "postgres", dir: "", proc: "OrbStack", lock: "docker" },
+  { pid: 52, port: 7000, name: "AirPlay", dir: "", proc: "ControlCe…", lock: "system" },
+];
+const st = { tab: "apps", apps: APPS(), ports: PORTS(), cur: { apps: 0, ports: 0 }, sel: { apps: new Set(), ports: new Set() }, pending: new Map(), gone: new Map(), toast: null };
+const quitting = () => st.pending.size > 0;
+const list = () => st[st.tab];
+
+const fmt = b => b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(1) + " GB" : Math.round(b / 1024 ** 2) + " MB";
+const bar = (f, w) => { const P = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"], e = Math.round(Math.max(0, Math.min(1, f)) * w * 8); return "█".repeat(Math.floor(e / 8)) + P[e % 8]; };
+const pad = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s).padEnd(n);
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+function rowText(r) {
+  if (st.tab === "apps") {
+    const max = Math.max(...st.apps.map(a => a.mem));
+    return { name: ` ${pad(r.name, 15)} `, bar: pad(bar(r.mem / max, 10), 10), mem: ` ${fmt(r.mem).padStart(8)}  ` };
+  }
+  return { name: ` :${String(r.port).padEnd(6)} ${pad(r.name, 12)} ${pad(r.dir, 13)} `, bar: "", mem: `${pad(r.proc, 10)} ${String(r.pid).padStart(6)}` };
+}
+
+const $ = id => document.getElementById(id);
+function render() {
+  const tab = st.tab, rows = list(), sel = st.sel[tab];
+  $("title").innerHTML = `─ ${tab === "apps" ? '<span class="on">Apps</span>' : '<span class="dim">Apps</span>'} <span class="dim">│</span> ${tab === "ports" ? '<span class="on">Ports</span>' : '<span class="dim">Ports</span>'} `;
+  $("keyline").textContent = tab === "apps" ? " tab ports  space select  a all  ⏎ quit  ⇧Q force  r refresh " : " tab apps  space select  a all  ⏎ stop  ⇧Q kill  r refresh ";
+  const picked = rows.filter(r => sel.has(r.pid));
+  $("summary").textContent = tab === "apps"
+    ? `${picked.length} selected · ${fmt(picked.reduce((n, r) => n + r.mem, 0))} · by memory `
+    : `${picked.length} selected · ${rows.length} ports `;
+  const html = rows.map((r, i) => {
+    const t = rowText(r), g = st.gone.get(r.pid), pend = st.pending.has(r.pid);
+    const cls = "row" + (i === st.cur[tab] ? " cur" : "");
+    if (g != null) {
+      const d = puff(t.name + t.bar + t.mem, performance.now() - g);
+      return `<div class="${cls}">🐾<span class="dim">${esc(d ?? "")}</span></div>`;
+    }
+    const mark = r.lock ? "🔒" : sel.has(r.pid) ? '<span class="cy">● </span>' : '<span class="dim">○ </span>';
+    const badge = pend ? `<span class="yel">${tab === "apps" ? "quitting…" : "stopping…"}</span>` : `<span class="dim">${esc(r.kind || r.lock || "")}</span>`;
+    const body = tab === "apps" ? `${esc(t.name)}<span class="cy">${esc(t.bar)}</span>${esc(t.mem)}` : `${esc(t.name)}<span class="dim">${esc(t.mem)}</span>  `;
+    return `<div class="${cls}" data-i="${i}">${mark}${body}${badge}</div>`;
+  }).join("");
+  $("rows").innerHTML = html || `<div class="row dim">  ${tab === "apps" ? "Nothing left to quit. Press r." : "No listening ports. Press r."}</div>`;
+  if (st.toast && performance.now() - st.toast.t >= 3500) st.toast = null;
+  $("toast").textContent = st.toast ? st.toast.msg : "";
+}
+
+function send(force) {
+  const tab = st.tab, rows = list(), sel = st.sel[tab];
+  // Like model::pick_targets: selected rows, or the cursor row; locked rows are dropped.
+  let targets = rows.filter(r => sel.has(r.pid));
+  if (!targets.length && rows[st.cur[tab]]) targets = [rows[st.cur[tab]]];
+  const locked = targets.filter(r => r.lock);
+  targets = targets.filter(r => !r.lock && !st.pending.has(r.pid) && !st.gone.has(r.pid));
+  if (!targets.length) { st.toast = { msg: locked.length ? `${locked[0].name} is locked 🔒` : "Nothing to quit", t: performance.now() }; return; }
+  swatAt = performance.now();
+  const verb = tab === "apps" ? (force ? "Force quit" : "Quit") : (force ? "Killed" : "Stopped");
+  st.toast = { msg: `✓ ${verb} ${targets.map(r => r.name).join(", ")}`, t: performance.now() };
+  targets.forEach((r, k) => {
+    st.pending.set(r.pid, true);
+    setTimeout(() => {
+      st.pending.delete(r.pid); st.gone.set(r.pid, performance.now()); happyAt = performance.now();
+      setTimeout(() => {
+        st.gone.delete(r.pid); sel.delete(r.pid);
+        st[tab] = st[tab].filter(x => x.pid !== r.pid);
+        st.cur[tab] = Math.min(st.cur[tab], Math.max(0, st[tab].length - 1));
+      }, 460);
+    }, (force ? 250 : 700) + k * 220);
+  });
+}
+
+function key(k, shift) {
+  const tab = st.tab, rows = list(), n = rows.length;
+  if (k === "ArrowDown" || k === "j") st.cur[tab] = Math.min(n - 1, st.cur[tab] + 1);
+  else if (k === "ArrowUp" || k === "k") st.cur[tab] = Math.max(0, st.cur[tab] - 1);
+  else if (k === " ") { const r = rows[st.cur[tab]]; if (r && !r.lock) { st.sel[tab].has(r.pid) ? st.sel[tab].delete(r.pid) : st.sel[tab].add(r.pid); } st.cur[tab] = Math.min(n - 1, st.cur[tab] + 1); }
+  else if (k === "a") { const free = rows.filter(r => !r.lock); const all = free.every(r => st.sel[tab].has(r.pid)); free.forEach(r => all ? st.sel[tab].delete(r.pid) : st.sel[tab].add(r.pid)); }
+  else if (k === "Escape") { term.blur(); return true; }
+  else if (k === "Enter") send(false);
+  else if (k === "Q" || (k === "q" && shift)) send(true);
+  else if (k === "Tab") st.tab = tab === "apps" ? "ports" : "apps";
+  else if (k === "r") { st[tab] = tab === "apps" ? APPS() : PORTS(); st.sel[tab].clear(); st.toast = { msg: "Refreshed", t: performance.now() }; }
+  else return false;
+  render();
+  return true;
+}
+
+const term = $("term");
+term.addEventListener("keydown", e => { if (e.metaKey || e.ctrlKey || e.altKey || (e.key === "Tab" && e.shiftKey)) return; if (key(e.key, e.shiftKey)) e.preventDefault(); });
+term.addEventListener("focus", () => { $("hint").textContent = "↑↓ move · space select · a all · ⏎ quit · ⇧Q force · tab ports · r refresh"; });
+$("rows").addEventListener("click", e => { const r = e.target.closest("[data-i]"); if (r) { st.cur[st.tab] = +r.dataset.i; key(" "); } });
+document.querySelectorAll(".pad button").forEach(b => b.addEventListener("click", () => key(b.dataset.k)));
+
+function copy(btn) {
+  const text = "brew install pregnantboy/tap/kat";
+  const done = () => { btn.textContent = "copied"; setTimeout(() => btn.textContent = "copy", 1400); };
+  navigator.clipboard?.writeText(text).then(done, () => { getSelection().selectAllChildren(btn.previousElementSibling); });
+}
+document.querySelectorAll("#copy, .copy2").forEach(b => b.addEventListener("click", () => copy(b)));
+
+$("rule").textContent = $("rule2").textContent = "─".repeat(120);
+const kits = [...document.querySelectorAll("canvas.kit")];
+kits.forEach(cv => cv.addEventListener("click", e => { e.preventDefault(); happyAt = performance.now(); }));
+let last = "";
+(function loop() {
+  const p = pose();
+  if (p !== last) { kits.forEach(cv => paint(cv, S[p])); last = p; }
+  if (st.gone.size || st.pending.size || st.toast) render();
+  requestAnimationFrame(loop);
+})();
+render();
+</script>
+</body>
+</html>
