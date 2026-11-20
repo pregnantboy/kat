@@ -16,6 +16,26 @@ If `cargo` isn't found, run `. "$HOME/.cargo/env"` first.
 
 Don't run `cargo run` or the binary from an agent shell. It needs a real TTY, and it quits apps and kills processes on this Mac. To look at it, open it in a new iTerm2 window: `osascript -e 'tell application "iTerm2" to create window with default profile command "<path to binary>"'`. Agent shells can't screenshot (no Screen Recording permission), so ask the user what they see.
 
+## Releasing
+
+Releases go out through `dist` (cargo-dist, installed with Homebrew) and `.github/workflows/release.yml`. Pushing a tag like `v0.2.0` builds arm64 and x86_64 macOS binaries, creates the GitHub Release on `pregnantboy/kat`, and pushes `Formula/kat.rb` to `pregnantboy/homebrew-tap`. Users install with `brew install pregnantboy/tap/kat` and update with `brew upgrade`.
+
+To cut a release:
+
+1. Check `main` is clean and pushed, `cargo test -q` passes, and warnings are zero.
+2. Ask the user for the version if they didn't give one. Bump `version` in `Cargo.toml`, then run `cargo build` so `Cargo.lock` picks it up.
+3. Commit both as `chore: release vX.Y.Z` and push `main`.
+4. Run `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must match `Cargo.toml` or the `plan` job fails.
+5. Watch the run with `gh run watch -R pregnantboy/kat`. Then confirm the release with `gh release view vX.Y.Z -R pregnantboy/kat`, and confirm the formula commit with `gh api repos/pregnantboy/homebrew-tap/commits --jq '.[0].commit.message'`.
+
+A suffix such as `v0.2.0-beta.1` makes a GitHub prerelease and skips the Homebrew publish.
+
+If `publish-homebrew-formula` fails with an auth error, the `HOMEBREW_TAP_TOKEN` secret on `pregnantboy/kat` is missing or expired. It's a fine-grained token with Contents read and write on `homebrew-tap` only. The user has to create it and run `gh secret set HOMEBREW_TAP_TOKEN -R pregnantboy/kat`. Then re-run the failed jobs with `gh run rerun <id> --failed`.
+
+Release config lives in `dist-workspace.toml`. After editing it, run `dist generate` (cargo must be on PATH) to regenerate the workflow, and never hand-edit `release.yml`. Keep `targets` macOS-only, because AppKit doesn't build elsewhere. `dist init -y` ignores `-t` and re-adds Linux and Windows targets.
+
+Commits in this repo use `hello@pboy.dev` (set in the repo's local git config). Don't commit with the work email.
+
 ## Architecture
 
 **OS boundary.** Only `src/apps.rs` (AppKit via objc2, `proc_pid_rusage`, icon rasterising) and `src/ports.rs` (socket scan via the `libproc` crate, `KERN_PROCARGS2`, cwd, `kill`) call the OS or contain `unsafe`. Everything else is pure and testable. `apps::list()` pumps the Cocoa run loop for ~10ms first, because a CLI has no run loop and `NSWorkspace` would otherwise return a stale app list.
