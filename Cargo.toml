@@ -2,6 +2,9 @@
 name = "kat"
 version = "0.1.0"
 edition = "2024"
+description = "macOS terminal UI for quitting apps and stopping processes on listening ports"
+repository = "https://github.com/pregnantboy/kat"
+homepage = "https://github.com/pregnantboy/kat"
 
 [dependencies]
 libc = "0.2"
@@ -10,3 +13,8 @@ objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSRunningApplication", "NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphicsContext", "objc2-core-graphics"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSRunLoop", "NSDate", "NSString", "NSArray", "NSEnumerator", "NSData", "NSDictionary", "NSGeometry", "NSURL"] }
 ratatui = "0.30"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
