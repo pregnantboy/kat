@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "macOS terminal UI for quitting apps and stopping processes on listening ports"
 repository = "https://github.com/pregnantboy/kat"
-homepage = "https://github.com/pregnantboy/kat"
+homepage = "https://github.com/pregnantboy/kat#readme"
 
 [dependencies]
 libc = "0.2"
